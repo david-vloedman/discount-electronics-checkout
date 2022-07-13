@@ -407,6 +407,7 @@ class Checkout extends Component<CheckoutProps & WithCheckoutProps & WithLanguag
                         isEmbedded={ isEmbedded() }
                         isUsingMultiShipping={ cart && consignments ? isUsingMultiShipping(consignments, cart.lineItems) : false }
                         onCartChangedError={ this.handleCartChangedError }
+                        onChangeStep={ this.handleEditStep }
                         onFinalize={ this.navigateToOrderConfirmation }
                         onReady={ this.handleReady }
                         onSubmit={ this.navigateToOrderConfirmation }

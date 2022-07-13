@@ -5,6 +5,8 @@ import React, { Component, ReactNode } from 'react';
 import { ObjectSchema } from 'yup';
 
 import { withCheckout, CheckoutContextProps } from '../checkout';
+// eslint-disable-next-line import/no-internal-modules
+import CheckoutStepType from '../checkout/CheckoutStepType';
 import { isCartChangedError, isRequestError, ErrorModal, ErrorModalOnCloseProps } from '../common/error';
 import { EMPTY_ARRAY } from '../common/utility';
 import { withLanguage, WithLanguageProps } from '../locale';
@@ -28,6 +30,7 @@ export interface PaymentProps {
     onSubmit?(): void;
     onSubmitError?(error: Error): void;
     onUnhandledError?(error: Error): void;
+    onChangeStep(type: CheckoutStepType): void;
 }
 
 interface WithCheckoutPaymentProps {
@@ -81,8 +84,20 @@ class Payment extends Component<PaymentProps & WithCheckoutPaymentProps & WithLa
             setSubmit: this.setSubmit,
             setValidationSchema: this.setValidationSchema,
             hidePaymentSubmitButton: this.hidePaymentSubmitButton,
+            navToLoginStep: this.navToLoginStep,
         };
     });
+
+    constructor(props: any) {
+        super(props);
+        this.navToLoginStep = this.navToLoginStep.bind(this);
+    }
+
+    navToLoginStep(): void {
+        console.log(this, 'this');
+        const { onChangeStep } = this.props;
+        onChangeStep(CheckoutStepType.Customer);
+    }
 
     async componentDidMount(): Promise<void> {
         const {

@@ -177,7 +177,14 @@ const PaymentMethodTitle: FunctionComponent<PaymentMethodTitleProps & WithLangua
     method,
 }) => {
     const methodName = getPaymentMethodName(language)(method);
-    const { logoUrl, titleText } = getPaymentMethodTitle(language, cdnBasePath)(method);
+    const title = getPaymentMethodTitle(language, cdnBasePath)(method);
+    let { titleText } = title;
+    const { logoUrl } = title;
+
+    /* obundle edit 7/12/2022 */
+    if (method.id === 'cod') {
+        titleText = '3 Easy Payments';
+    }
 
     const getSelectedCardType = () => {
         if (!isSelected) {

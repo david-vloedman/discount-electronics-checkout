@@ -1,6 +1,10 @@
+
 import { CheckoutSelectors, PaymentInitializeOptions, PaymentMethod, PaymentRequestOptions } from '@bigcommerce/checkout-sdk';
 import { noop } from 'lodash';
-import { Component, ReactNode } from 'react';
+import React, { Component , ReactNode } from 'react';
+
+// eslint-disable-next-line import/no-internal-modules
+import MultiplePaymentForm from '../../obCustom/MultiplePaymentForm/MultiplePaymentForm';
 
 export interface OfflinePaymentMethodProps {
     method: PaymentMethod;
@@ -45,6 +49,15 @@ export default class OfflinePaymentMethod extends Component<OfflinePaymentMethod
     }
 
     render(): ReactNode {
+        const {
+            method,
+        } = this.props;
+
+        if (method.id === 'cod') {
+            // @ts-ignore
+            return <MultiplePaymentForm method={ method } />;
+        }
+
         return null;
     }
 }
