@@ -79,12 +79,16 @@ class Payment extends Component<PaymentProps & WithCheckoutPaymentProps & WithLa
     };
 
     private getContextValue = memoizeOne(() => {
+
+        const { onSubmitError } = this.props;
+
         return {
             disableSubmit: this.disableSubmit,
             setSubmit: this.setSubmit,
             setValidationSchema: this.setValidationSchema,
             hidePaymentSubmitButton: this.hidePaymentSubmitButton,
             navToLoginStep: this.navToLoginStep,
+            handleSubmitError: onSubmitError,
         };
     });
 
@@ -94,7 +98,6 @@ class Payment extends Component<PaymentProps & WithCheckoutPaymentProps & WithLa
     }
 
     navToLoginStep(): void {
-        console.log(this, 'this');
         const { onChangeStep } = this.props;
         onChangeStep(CheckoutStepType.Customer);
     }
@@ -204,7 +207,7 @@ class Payment extends Component<PaymentProps & WithCheckoutPaymentProps & WithLa
             shouldLocaliseErrorMessages,
             submitOrderError,
         } = this.props;
-
+        console.log('submitERROR', submitOrderError)
         // FIXME: Export correct TS interface
         const error: any = submitOrderError || finalizeOrderError;
 
@@ -404,6 +407,7 @@ class Payment extends Component<PaymentProps & WithCheckoutPaymentProps & WithLa
             await submitOrder(mapToOrderRequestBody(values, isPaymentDataRequired()));
             onSubmit();
         } catch (error) {
+            console.log('error', error)
             if (error.type === 'payment_method_invalid') {
                 return loadPaymentMethods();
             }

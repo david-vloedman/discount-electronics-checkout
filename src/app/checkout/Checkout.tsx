@@ -554,11 +554,16 @@ class Checkout extends Component<CheckoutProps & WithCheckoutProps & WithLanguag
 
     private handleError: (error: Error) => void = error => {
         const { errorLogger } = this.props;
-
+        console.log(error, 'handling')
         errorLogger.log(error);
 
         if (this.embeddedMessenger) {
-            this.embeddedMessenger.postError(error);
+            try {
+                this.embeddedMessenger.postError(error);
+            } catch (error) {
+                console.error(error)
+            }
+            
         }
     };
 
