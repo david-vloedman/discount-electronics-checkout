@@ -207,7 +207,7 @@ class Payment extends Component<PaymentProps & WithCheckoutPaymentProps & WithLa
             shouldLocaliseErrorMessages,
             submitOrderError,
         } = this.props;
-        console.log('submitERROR', submitOrderError)
+
         // FIXME: Export correct TS interface
         const error: any = submitOrderError || finalizeOrderError;
 
