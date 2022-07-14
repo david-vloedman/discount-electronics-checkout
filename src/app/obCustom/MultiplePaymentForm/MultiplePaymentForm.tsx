@@ -1,9 +1,7 @@
 /* eslint-disable @typescript-eslint/tslint/config */
-
 /* eslint-disable react/jsx-no-bind */
 /* eslint-disable react-hooks/exhaustive-deps */
 /* eslint-disable import/no-internal-modules */
-
 import classNames from 'classnames';
 import React, { useCallback, useEffect, useReducer, useRef, useState } from 'react';
 
@@ -14,7 +12,7 @@ import { IconLock } from '../../ui/icon';
 import { LoadingOverlay } from '../../ui/loading';
 
 import { errorReducer, handleTokenError, initialFormErrorStates, ActionTypes } from './errorReducer';
-import { createCustomer, getCustomer as _getCustomer } from './utils/customer-helpers';
+import { createCustomer, getCustomer } from './utils/customer-helpers';
 import FormFieldError from './FormFieldError';
 import MultiplePaymentErrorModal from './MultiplePaymentErrorModal';
 
@@ -30,6 +28,16 @@ const initialErrorModalState = {
     message: '',
     title: '',
 };
+
+const initialExistingCustomer = {
+    isLoaded: false,
+    customer: null,
+}
+
+const initialLoadingState = {
+    btLoading: false,
+    ez3Loading: false,
+}
 
 const MultiplePaymentForm = (props: any) => {
     const {
@@ -48,8 +56,9 @@ const MultiplePaymentForm = (props: any) => {
         expirationDate,
     } , dispatchFormAction] = useReducer(errorReducer, initialFormErrorStates);
 
-    const [braintreeLoaded, setBraintreeLoaded] = useState(() => false);
+    const [isLoading, setIsLoading] = useState(() => initialLoadingState);
     const [errorModalState, updateErrorModalState] = useState(() => initialErrorModalState);
+    const [existingCustomer, updateExistingCustomer] = useState(() => initialExistingCustomer)
 
     const btClientRef = useRef(null);
     const hostedFieldRef = useRef(null);
@@ -64,6 +73,11 @@ const MultiplePaymentForm = (props: any) => {
         hostedFieldsInstance.on('focus', (e: any) =>
             dispatchFormAction({type: ActionTypes.inputFocus, payload: e.emittedBy})
         );
+
+        setIsLoading(state => ({
+            ...state,
+            btLoading: false
+        }))
     }, []);
 
     const handleBraintree = useCallback((braintree: any) => (err: any, clientInstance: any)  => {
@@ -94,7 +108,8 @@ const MultiplePaymentForm = (props: any) => {
               },
             },
         }, setupForm);
-        setBraintreeLoaded(true);
+
+        
     }, [setupForm]);
 
     const handleFormSubmit = () => {
@@ -127,12 +142,36 @@ const MultiplePaymentForm = (props: any) => {
      *  Side effects
      *
      */
-
+    useEffect(() => console.log(existingCustomer), [existingCustomer])
     /*  Component Mount/Unmount */
     useEffect(() => {
-        disableSubmit(method, customer.isGuest);
-        setSubmit(method, handleFormSubmit);
+        const tryGetCustomer = async () => {
+            const { email } = billingAddress
+            const { data = null } = await getCustomer(email)
+                
+            updateExistingCustomer(() => ({
+                isLoaded: true,
+                customer: data
+            }))
+            
+            setIsLoading(state => ({
+                ...state,
+                ez3Loading: false
+            }))
+        }
 
+        disableSubmit(method, customer.isGuest);
+
+        if( ! customer.isGuest ) {
+            setIsLoading(() => ({
+                ez3Loading: true,
+                btLoading: true
+            }));
+            console.log('setting loading state')
+            setSubmit(method, handleFormSubmit);
+            tryGetCustomer();
+        }
+              
         // todo setup clean up
         return () => {
             // const { current: client } = btClientRef
@@ -173,7 +212,7 @@ const MultiplePaymentForm = (props: any) => {
 
             {
                 customer.isGuest ||
-                <LoadingOverlay hideContentWhenLoading={ true } isLoading={ !braintreeLoaded }>
+                <LoadingOverlay hideContentWhenLoading={ true } isLoading={ isLoading.btLoading || isLoading.ez3Loading }>
                     <div className="form-ccFields">
                         <div className={ classNames('form-field form-field--ccNumber', { ['form-field--error']: number.hasError }) }>
                             <label className="form-label optimizedCheckout-form-label" htmlFor="hostedForm.errors.cardNumber">Credit Card Number</label>
