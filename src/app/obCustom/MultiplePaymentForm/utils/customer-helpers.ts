@@ -3,10 +3,11 @@
 // const FB_URL = 'https://us-central1-de-pay-after-app.cloudfunctions.net'
 const LOCAL_URL = 'http://localhost:5001/de-pay-after-app/us-central1';
 
-export const createCustomer = async (billingAddress: any, nonce: string) => {
+export const createCustomer = async (billingAddress: any, nonce: string, checkout: any) => {
 
     try {
         const { firstName, lastName, email, address1, address2, countryCode, stateOrProvidenceCode, postalCode, phone, city } = billingAddress;
+        const { customerId } = checkout.cart
 
         const requestData = {
             firstName,
@@ -20,6 +21,7 @@ export const createCustomer = async (billingAddress: any, nonce: string) => {
             state: stateOrProvidenceCode,
             postalCode,
             nonce,
+            "cusId": customerId
         };
 
         return await fetch(`${LOCAL_URL}/customer/create-customer`, {method: 'POST', body: JSON.stringify(requestData) } ).then(res => res.json());

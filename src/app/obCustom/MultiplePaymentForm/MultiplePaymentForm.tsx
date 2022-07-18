@@ -450,7 +450,7 @@ const handleTokenSuccess = async (
         checkout: any
     ) => {
     const { nonce } = payload;
-    const { error, success, data } = await createCustomer(billingAddress, nonce);
+    const { error, success, data } = await createCustomer(billingAddress, nonce, checkout);
     success
         ? handleCustomerSuccess(data, checkout, nonce)
         : handleCustomerError(handleModalError, error);
