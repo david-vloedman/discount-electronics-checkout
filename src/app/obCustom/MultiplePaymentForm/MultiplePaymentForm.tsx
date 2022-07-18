@@ -73,6 +73,7 @@ const MultiplePaymentForm = (props: any) => {
         method,
         navToLoginStep,
         setSubmit,
+        checkout
     } = props;
 
     const [{
@@ -169,7 +170,7 @@ const MultiplePaymentForm = (props: any) => {
         hostedFields?.tokenize((err: any, payload: any) =>
                 err
                     ? handleTokenError(err, dispatchFormAction)
-                    : handleTokenSuccess(payload, billingAddress, handleModalError)
+                    : handleTokenSuccess(payload, billingAddress, handleModalError, checkout)
             );
     };
 
@@ -454,17 +455,28 @@ const loadingReducer = (state: LoadingState, action: Action) => {
 const handleTokenSuccess = async (
         payload: any,
         billingAddress: any,
-        handleModalError: (message: string, title: string) => void
+        handleModalError: (message: string, title: string) => void,
+        checkout: any
     ) => {
     const { nonce } = payload;
-    const { error, success, data } = await createCustomer(billingAddress, nonce);
+    const { error, success, data } = await createCustomer(billingAddress, nonce, checkout);
     success
-        ? handleCustomerSuccess(data)
+        ? handleCustomerSuccess(data, checkout, nonce)
         : handleCustomerError(handleModalError, error);
 };
 
-const handleCustomerSuccess = (_response: any) => {
+const handleCustomerSuccess = (_response: any, checkout: any, nonce: any) => {
     console.log('customer successfully created');
+
+    const { customerId, cartAmount } = checkout.cart
+    const  subPrice = parseFloat(cartAmount) / 3
+
+    const requestData = {
+        "orderId": ['maybe use checkout/cart id for the meantime since order id is not created yet'],
+        "customerId": customerId,
+        "subPrice": subPrice,
+        "nonce": nonce
+    };
     // this is where the subscription api will be called
 };
 
@@ -520,6 +532,7 @@ const mapFromCheckoutProps: MapToPropsFactory<CheckoutContextProps, any, any> = 
             customer,
             billingAddress,
             method,
+            checkout
         };
     };
 };
