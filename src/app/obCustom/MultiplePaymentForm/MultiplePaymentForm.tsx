@@ -86,6 +86,7 @@ const MultiplePaymentForm = (props: any) => {
     const [errorModalState, updateErrorModalState] = useState(() => initialErrorModalState);
     const [existingCustomer, updateExistingCustomer] = useState(() => initialExistingCustomer);
     const [visibilityState, dispatchVisibilityAction] = useReducer(visibilityReducer, initialVisibilityState)
+    const [termsConditionsChecked, toggleTermsConditionsChecked] = useReducer(state => !state, false)
 
     const btMainRef = useRef(null)
     const btClientRef = useRef(null);
@@ -200,9 +201,10 @@ const MultiplePaymentForm = (props: any) => {
      *  Side effects
      *
      */
-    useEffect(() => console.log(existingCustomer), [existingCustomer])
-    useEffect(() => console.log(isLoading), [isLoading])
+    // useEffect(() => console.log(existingCustomer), [existingCustomer])
+    // useEffect(() => console.log(isLoading), [isLoading])
     // useEffect(() => console.log(visibilityState), [visibilityState])
+    useEffect(() => console.log(termsConditionsChecked), [termsConditionsChecked])
     /*  Component Mount/Unmount */
     useEffect(() => {
         const tryGetCustomer = async () => {
@@ -281,6 +283,8 @@ const MultiplePaymentForm = (props: any) => {
         
     }, [visibilityState, handleBraintree])
 
+    const test = () => console.log('chaing')
+
     return (
         <div className="paymentMethod paymentMethod--creditCard">
             {
@@ -332,8 +336,13 @@ const MultiplePaymentForm = (props: any) => {
                     </div>
                     
                     { /* todo: terms and conditions */ }
-                    <div>
-                        <div>Your payment information must be saved to make multiple payments.</div>
+                    <div className='form-field'>
+                        
+                            
+                        <input className='form-checkbox optimizedCheckout-form-checkbox' id="test" name="ez3-terms" onChange={ () => console.log('testing') } type="checkbox" value={ 'checked' } />
+                        <label className='form-label optimizedCheckout-form-label'>
+                            Yes, I agree with the above terms and conditions
+                        </label> 
                     </div>
                         
         
