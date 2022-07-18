@@ -73,6 +73,7 @@ const MultiplePaymentForm = (props: any) => {
         method,
         navToLoginStep,
         setSubmit,
+        checkout
     } = props;
 
     const [{
@@ -168,7 +169,7 @@ const MultiplePaymentForm = (props: any) => {
         hostedFields?.tokenize((err: any, payload: any) =>
                 err
                     ? handleTokenError(err, dispatchFormAction)
-                    : handleTokenSuccess(payload, billingAddress, handleModalError)
+                    : handleTokenSuccess(payload, billingAddress, handleModalError, checkout)
             );
     };
 
@@ -445,16 +446,17 @@ const loadingReducer = (state: LoadingState, action: Action) => {
 const handleTokenSuccess = async (
         payload: any,
         billingAddress: any,
-        handleModalError: (message: string, title: string) => void
+        handleModalError: (message: string, title: string) => void,
+        checkout: any
     ) => {
     const { nonce } = payload;
     const { error, success, data } = await createCustomer(billingAddress, nonce);
     success
-        ? handleCustomerSuccess(data)
+        ? handleCustomerSuccess(data, checkout)
         : handleCustomerError(handleModalError, error);
 };
 
-const handleCustomerSuccess = (_response: any) => {
+const handleCustomerSuccess = (_response: any, checkout: any) => {
     console.log('customer successfully created');
     // this is where the subscription api will be called
 };
@@ -511,6 +513,7 @@ const mapFromCheckoutProps: MapToPropsFactory<CheckoutContextProps, any, any> = 
             customer,
             billingAddress,
             method,
+            checkout
         };
     };
 };
