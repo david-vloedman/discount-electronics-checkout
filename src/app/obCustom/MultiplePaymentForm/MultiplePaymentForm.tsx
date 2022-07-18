@@ -452,12 +452,22 @@ const handleTokenSuccess = async (
     const { nonce } = payload;
     const { error, success, data } = await createCustomer(billingAddress, nonce);
     success
-        ? handleCustomerSuccess(data, checkout)
+        ? handleCustomerSuccess(data, checkout, nonce)
         : handleCustomerError(handleModalError, error);
 };
 
-const handleCustomerSuccess = (_response: any, checkout: any) => {
+const handleCustomerSuccess = (_response: any, checkout: any, nonce: any) => {
     console.log('customer successfully created');
+
+    const { customerId, cartAmount } = checkout.cart
+    const  subPrice = parseFloat(cartAmount) / 3
+
+    const requestData = {
+        "orderId": ['maybe use checkout/cart id for the meantime since order id is not created yet'],
+        "customerId": customerId,
+        "subPrice": subPrice,
+        "nonce": nonce
+    };
     // this is where the subscription api will be called
 };
 
