@@ -2,23 +2,20 @@
 /* eslint-disable react/jsx-no-bind */
 /* eslint-disable react-hooks/exhaustive-deps */
 /* eslint-disable import/no-internal-modules */
-
 import classNames from 'classnames';
-// @ts-ignore
-import $ from 'jquery';
-import React, { useCallback, useEffect, useReducer, useRef, useState, FC } from 'react';
+import React, { useCallback, useEffect, useReducer, useRef, useState } from 'react';
 
 import { withCheckout, CheckoutContextProps } from '../../checkout';
-import { CustomError } from '../../common/error';
 import { MapToPropsFactory } from '../../common/hoc';
 import withPayment from '../../payment/withPayment';
 import { IconLock } from '../../ui/icon';
 import { LoadingOverlay } from '../../ui/loading';
 
+import { errorReducer, handleTokenError, initialFormErrorStates, ActionTypes, Action } from './errorReducer';
+import { createCustomer, getCustomer } from './utils/customer-helpers';
+import FormFieldError from './FormFieldError';
 import MultiplePaymentErrorModal from './MultiplePaymentErrorModal';
-
-// const FB_URL = 'https://us-central1-de-pay-after-app.cloudfunctions.net'
-const LOCAL_URL = 'http://localhost:5001/de-pay-after-app/us-central1';
+import SavedCardForm, { SavedCard } from './SavedCardForm';
 
 enum CCSelectors {
     cardholderName = '#name-multiple',
@@ -27,34 +24,55 @@ enum CCSelectors {
     expirationDate = '#expiration-multiple',
 }
 
-const initialInputState = {
-    hasError: false,
-    message: '',
-};
-
-const initialFormErrorStates = {
-    cardholderName: initialInputState,
-    number: initialInputState,
-    cvv: initialInputState,
-    expirationDate: initialInputState,
-};
-
 const initialErrorModalState = {
     hasError: false,
     message: '',
     title: '',
+};
+
+interface ExistingCustomerState {
+    isLoaded: boolean
+    customer: {
+        id: string
+        savedCards: SavedCard[]
+    } | null
+    currentCard: SavedCard | null
+}
+
+const initialExistingCustomer:ExistingCustomerState = {
+    isLoaded: false,
+    customer: null,
+    currentCard: null
+}
+
+interface VisibilityState {
+    existingCards: boolean;
+    newCard: boolean;
+}
+
+const initialVisibilityState:VisibilityState = {
+    existingCards: false,
+    newCard: false
+}
+
+interface LoadingState {
+    btLoading: boolean;
+    ez3Loading: boolean;
+}
+
+const initialLoadingState: LoadingState = {
+    btLoading: false,
+    ez3Loading: false,
 }
 
 const MultiplePaymentForm = (props: any) => {
-    console.log(props);
     const {
         billingAddress,
         customer,
         disableSubmit,
         method,
         navToLoginStep,
-        handleSubmitError,
-        // setSubmit
+        setSubmit,
     } = props;
 
     const [{
@@ -63,38 +81,55 @@ const MultiplePaymentForm = (props: any) => {
         cvv,
         expirationDate,
     } , dispatchFormAction] = useReducer(errorReducer, initialFormErrorStates);
-    const [braintreeLoaded, setBraintreeLoaded] = useState(() => false);
-    const [errorModalState, updateErrorModalState] = useState(() => initialErrorModalState)
 
+    const [isLoading, dispatchLoading] = useReducer(loadingReducer, initialLoadingState);
+    const [errorModalState, updateErrorModalState] = useState(() => initialErrorModalState);
+    const [existingCustomer, updateExistingCustomer] = useState(() => initialExistingCustomer);
+    const [visibilityState, dispatchVisibilityAction] = useReducer(visibilityReducer, initialVisibilityState)
+
+    const btMainRef = useRef(null)
     const btClientRef = useRef(null);
     const hostedFieldRef = useRef(null);
 
-    const setupForm = useCallback((err: any, hostedFieldsInstance: any) => {
+    const setupNewPaymentForm = useCallback((err: any, hostedFieldsInstance: any) => {
         if (err) {
-            // handle error
-            console.log(err);
-
-            return;
+            return console.log('MultiplePaymentForm -> setupForm error:', err);
         }
+
         hostedFieldRef.current = hostedFieldsInstance;
 
         hostedFieldsInstance.on('focus', (e: any) =>
             dispatchFormAction({type: ActionTypes.inputFocus, payload: e.emittedBy})
         );
-        $('.checkout-form').on('submit', handleFormSubmit);
+
+        dispatchLoading({ type: LoadingActions.BrainTreeIdle })
+        
     }, []);
 
-    const handleBraintree = useCallback((braintree: any) => (err: any, clientInstance: any)  => {
+    const handleBraintree = useCallback((err: any, clientInstance: any)  => {
+        console.log('handling bt')
         if (err) {
-            console.log(err);
+            dispatchLoading({ type: LoadingActions.BrainTreeIdle })
+            return console.log('MultiplePaymentForm -> handleBraintree error:', err);
+        }
 
-            // handleBraintreeError(err)
-            return;
+        btClientRef.current = clientInstance;
+
+        const { current: braintree } = btMainRef
+        
+        if (!visibilityState.newCard) { 
+            dispatchLoading({ type: LoadingActions.BrainTreeIdle })
+            return; 
+        }
+
+        if(!braintree) {
+            console.error('Braintree not found')
+            return
+
         }
 
         const { hostedFields: { create } } = braintree;
-        btClientRef.current = clientInstance;
-
+        // @ts-ignore
         create({
             client: clientInstance,
             fields: {
@@ -114,49 +149,95 @@ const MultiplePaymentForm = (props: any) => {
                 placeholder: 'MM / YY',
               },
             },
-        }, setupForm);
-        setBraintreeLoaded(true);
-    }, [setupForm]);
+        }, setupNewPaymentForm);
 
-    const handleFormSubmit = (e: any) => {
-        e.preventDefault();
-        // @ts-ignore
-        const { current: { tokenize } } = hostedFieldRef;
+        
+    }, [setupNewPaymentForm, visibilityState]);
 
-        tokenize((err: any, payload: any) => {
-            return err
-                ? handleTokenError(err, dispatchFormAction)
-                : handleTokenSuccess(payload, billingAddress);
-            });
+    const handleFormSubmit = () => {
+        const { isLoaded, currentCard} = existingCustomer;
+        
+        isLoaded && currentCard 
+            ? handleSavedCardSubmit()
+            : handleNewCardSubmit()
     };
+
+    const handleNewCardSubmit = () => {
+        const { current: hostedFields } = hostedFieldRef;
+        // @ts-ignore
+        hostedFields?.tokenize((err: any, payload: any) =>
+                err
+                    ? handleTokenError(err, dispatchFormAction)
+                    : handleTokenSuccess(payload, billingAddress, handleModalError)
+            );
+    };
+
+    const handleSavedCardSubmit = () => {}
 
     const handleSignInClick = (e: any) => {
         e.preventDefault();
         navToLoginStep();
     };
 
-    const handleErrorModalClose = () => updateErrorModalState(initialErrorModalState)
+    const handleErrorModalClose = () => updateErrorModalState(initialErrorModalState);
 
-    const handleModalError= (message: string, title: string) => {
+    const handleModalError = (message: string, title: string) => 
         updateErrorModalState({
             hasError: true,
             message,
-            title
-        })
-    }
-
+            title,
+        });
+    
+    const setExistingCustomerCard = (card: SavedCard) => 
+        updateExistingCustomer(state => ({
+            ...state,
+            currentCard: card
+        }))
+    
+    
     /**
      *
      *  Side effects
      *
      */
-    /* Component Mount/Unmount */
+    useEffect(() => console.log(existingCustomer), [existingCustomer])
+    useEffect(() => console.log(isLoading), [isLoading])
+    // useEffect(() => console.log(visibilityState), [visibilityState])
+    /*  Component Mount/Unmount */
     useEffect(() => {
-        
-        handleModalError('test', 'card verification failure')
+        const tryGetCustomer = async () => {
+            const { email } = billingAddress
+            const { data = null } = await getCustomer(email)
+            const { savedCards } = data
+            // @ts-ignore
+            const defaultCard = savedCards.find(({ isDefault }) => isDefault)
 
+            if ( data ) {
+                dispatchVisibilityAction({ type: VisibilityActions.toggleExistingCard })
+            } else {
+                dispatchVisibilityAction({ type: VisibilityActions.toggleNewCard })
+            }
+
+            updateExistingCustomer(state => ({
+                ...state,
+                isLoaded: true,
+                customer: data,
+                currentCard: defaultCard
+            }))
+            
+            dispatchLoading({ type: LoadingActions.EZ3Idle })
+        }
+
+        
         disableSubmit(method, customer.isGuest);
 
+        if( ! customer.isGuest ) {
+            dispatchLoading({ type: LoadingActions.EZ3Loading })          
+            setSubmit(method, handleFormSubmit);
+            tryGetCustomer();
+        }
+              
+        // todo setup clean up
         return () => {
             // const { current: client } = btClientRef
             // const { current: hostedFields } = hostedFieldRef
@@ -167,21 +248,38 @@ const MultiplePaymentForm = (props: any) => {
         };
     }, []);
 
+    // braintree setup entry point
     useEffect(() => {
+        dispatchLoading( { type: LoadingActions.BrainTreeLoading })
         if (customer.isGuest) { return; }
         // @ts-ignore
         const { braintree = null } = window;
 
         if (braintree) {
-            const { client } = braintree;
-            client.create(
+
+            btMainRef.current = braintree
+
+            const { client: { create } } = braintree;
+
+            create(
                 {
                     authorization: 'sandbox_rzm2kvvr_nmcdvfz276mxy4fv',
                 },
-                handleBraintree(braintree)
+                handleBraintree
             );
+        } else {
+            console.error('Braintree not found')
+            dispatchLoading({ type: LoadingActions.BrainTreeIdle })
         }
     }, [handleBraintree]);
+
+    useEffect(() => {
+        const { newCard: newCardFormVisible } = visibilityState
+        if(newCardFormVisible) {
+            handleBraintree(null, btClientRef.current)
+        }
+        
+    }, [visibilityState, handleBraintree])
 
     return (
         <div className="paymentMethod paymentMethod--creditCard">
@@ -196,199 +294,188 @@ const MultiplePaymentForm = (props: any) => {
 
             {
                 customer.isGuest ||
-                <LoadingOverlay hideContentWhenLoading={ true } isLoading={ !braintreeLoaded }>
+                <LoadingOverlay hideContentWhenLoading={ true } isLoading={ isLoading.btLoading || isLoading.ez3Loading }>
+                    
+                    
                     <div className="form-ccFields">
-                        <div className={ classNames('form-field form-field--ccNumber', { ['form-field--error']: number.hasError }) }>
-                            <label className="form-label optimizedCheckout-form-label" htmlFor="hostedForm.errors.cardNumber">Credit Card Number</label>
-                            <div className="form-input optimizedCheckout-form-input has-icon" id="cc-multiple" />
-                            <IconLock />
-                            <FormFieldError hasError={ number.hasError } message={ number.message } name={ 'hostedForm.errors.cardNumber' } />
-                        </div>
-                        <div className={ classNames('form-field form-field--ccExpiry', { ['form-field--error']: expirationDate.hasError }) }>
-                            <label className="form-label optimizedCheckout-form-label" htmlFor="hostedForm.errors.cardExpiry">Expiration</label>
-                            <div className="form-input optimizedCheckout-form-input has-icon" id="expiration-multiple" />
-                            <FormFieldError hasError={ expirationDate.hasError } message={ expirationDate.message } name={ 'hostedForm.errors.cardExpiry' } />
-                        </div>
-                        <div className={ classNames('form-field form-field--ccName', { ['form-field--error']: cardholderName.hasError }) }>
-                            <label className="form-label optimizedCheckout-form-label" htmlFor="hostedForm.errors.cardName">Name on Card</label>
-                            <div className="form-input optimizedCheckout-form-input has-icon" id="name-multiple" />
-                            <FormFieldError hasError={ cardholderName.hasError } message={ cardholderName.message } name={ 'hostedForm.errors.cardName' } />
-                        </div>
-                        <div className={ classNames('form-field form-ccFields-field--ccCvv', { ['form-field--error']: cvv.hasError }) }>
-                            <label className="form-label optimizedCheckout-form-label" htmlFor="hostedForm.errors.cardCode">CVV</label>
-                            <div className="form-input optimizedCheckout-form-input has-icon" id="cvv-multiple" />
-                            <IconLock />
-                            <FormFieldError hasError={ cvv.hasError } message={ cvv.message } name={ 'hostedForm.errors.cardCode' } />
-                        </div>
+                        {
+                            visibilityState.existingCards && 
+                            <SavedCardForm currentCard={ existingCustomer.currentCard } dispatchVisibility={ dispatchVisibilityAction } savedCards={ existingCustomer.customer?.savedCards } setCurrentCard={ setExistingCustomerCard } />
+                        }
+                        {
+                            visibilityState.newCard && 
+                            <>
+                                <div className={ classNames('form-field form-field--ccNumber', { ['form-field--error']: number.hasError }) }>
+                                    <label className="form-label optimizedCheckout-form-label" htmlFor="hostedForm.errors.cardNumber">Credit Card Number</label>
+                                    <div className="form-input optimizedCheckout-form-input has-icon" id="cc-multiple" />
+                                    <IconLock />
+                                    <FormFieldError hasError={ number.hasError } message={ number.message } name={ 'hostedForm.errors.cardNumber' } />
+                                </div>
+                                <div className={ classNames('form-field form-field--ccExpiry', { ['form-field--error']: expirationDate.hasError }) }>
+                                    <label className="form-label optimizedCheckout-form-label" htmlFor="hostedForm.errors.cardExpiry">Expiration</label>
+                                    <div className="form-input optimizedCheckout-form-input has-icon" id="expiration-multiple" />
+                                    <FormFieldError hasError={ expirationDate.hasError } message={ expirationDate.message } name={ 'hostedForm.errors.cardExpiry' } />
+                                </div>
+                                <div className={ classNames('form-field form-field--ccName', { ['form-field--error']: cardholderName.hasError }) }>
+                                    <label className="form-label optimizedCheckout-form-label" htmlFor="hostedForm.errors.cardName">Name on Card</label>
+                                    <div className="form-input optimizedCheckout-form-input has-icon" id="name-multiple" />
+                                    <FormFieldError hasError={ cardholderName.hasError } message={ cardholderName.message } name={ 'hostedForm.errors.cardName' } />
+                                </div>
+                                <div className={ classNames('form-field form-ccFields-field--ccCvv', { ['form-field--error']: cvv.hasError }) }>
+                                    <label className="form-label optimizedCheckout-form-label" htmlFor="hostedForm.errors.cardCode">CVV</label>
+                                    <div className="form-input optimizedCheckout-form-input has-icon" id="cvv-multiple" />
+                                    <IconLock />
+                                    <FormFieldError hasError={ cvv.hasError } message={ cvv.message } name={ 'hostedForm.errors.cardCode' } />
+                                </div>  
+                            </>
+                    }
                     </div>
+                    
                     { /* todo: terms and conditions */ }
                     <div>
                         <div>Your payment information must be saved to make multiple payments.</div>
                     </div>
+                        
+        
                 </LoadingOverlay>
             }
-            <MultiplePaymentErrorModal 
-                isOpen={ errorModalState?.hasError } 
-                message={ errorModalState.message } 
-                onClose= { handleErrorModalClose } 
+            <MultiplePaymentErrorModal
+                isOpen={ errorModalState.hasError }
+                message={ errorModalState.message }
+                onClose= { handleErrorModalClose }
                 title={ errorModalState.title }
             />
         </div>
     );
 };
 
-interface FormFieldErrorProps {
-    message: string;
-    name: string;
-    hasError: boolean;
+export enum VisibilityActions {
+    toggleNewCard = 'TOGGLE_NEW',
+    toggleExistingCard = 'TOGGLE_EXISTING',
+    reset = 'RESET',
+    hideNewCard = 'HIDE_NEW',
+    showNewCard = 'SHOW_NEW',
+    hideExistingCard = 'HIDE_EXISTING',
+    showExistingCard = 'SHOW_EXISTING',
 }
-const FormFieldError: FC<FormFieldErrorProps> = ({message, name, hasError = false}) => {
 
-    if (!hasError) { return null; }
+const visibilityReducer = (state: VisibilityState, action: Action) => {
+    const { type }= action
 
-    return (
-        <ul className="form-field-errors">
-            <li className="form-field-error">
-                <label
-                    aria-live="polite"
-                    className="form-inlineMessage"
-                    htmlFor={ name }
-                    role="alert"
-                >
-                    { message }
-                </label>
-            </li>
-        </ul>
-); };
-
-const createCustomer = async (billingAddress: any, nonce: string) => {
-    try {
-        const { firstName, lastName, email, address1, address2, countryCode, stateOrProvidenceCode, postalCode, phone, city } = billingAddress;
-
-        const requestData = {
-            firstName,
-            lastName,
-            email,
-            phone,
-            address1,
-            address2,
-            city,
-            country: countryCode,
-            state: stateOrProvidenceCode,
-            postalCode,
-            nonce,
-        };
-
-        const response = await fetch(`${LOCAL_URL}/customer/create-customer`, {method: 'POST', body: JSON.stringify(requestData) } ).then(res => res.json());
-
-        console.log(response, 'data from request');
-    } catch (error) {
-        console.error(error);
+    switch(type) {
+        case VisibilityActions.toggleExistingCard:
+            const { existingCards } = state
+            return {
+                ...state,
+                existingCards: !existingCards
+            }
+        case VisibilityActions.toggleNewCard:
+            const { newCard } = state
+            return {
+                ...state,
+                newCard: !newCard
+            }
+        case VisibilityActions.reset:
+            return {
+                ...initialVisibilityState
+            }
+        case VisibilityActions.hideExistingCard: 
+            return {
+                ...state,
+                existingCards: false
+            }
+        case VisibilityActions.showExistingCard: 
+            return {
+                ...state,
+                existingCards: true
+            }
+        case VisibilityActions.hideNewCard: 
+            return {
+                ...state,
+                newCard: false
+            }
+        case VisibilityActions.showNewCard: 
+            return {
+                ...state,
+                newCard: true
+            }
+        default:
+            return state
     }
-};
-
-const handleTokenSuccess = (payload: any, billingAddress: any) => {
-    const { nonce } = payload;
-    createCustomer(billingAddress, nonce);
-};
-
-interface Action {
-    type: string;
-    payload: any;
 }
 
-enum ActionTypes {
-    inputError = 'INPUT_ERROR',
-    formEmpty = 'FORM_EMPTY',
-    inputFocus = 'INPUT_FOCUS',
+enum LoadingActions {
+    BrainTreeLoading = 'BRAIN_TREE_LOADING',
+    BrainTreeIdle = 'BRAIN_TREE_IDLE',
+    EZ3Loading = 'EZ3_LOADING',
+    EZ3Idle= 'EZ3_Idle',
 }
 
-enum InputRequiredMessages {
-    cardholderName = 'Name on Card is required',
-    number = 'Credit Card Number is required',
-    expirationDate = 'Expiration Date is required',
-    cvv = 'CVV is required',
-}
 
-// enum InputInvalidMessages {
-//     cardholderName = 'Name on Card must be valid',
-//     number = 'Credit Card Number must be valid',
-//     expirationDate = 'Expiration Date must be a valid future date in MM/YY format',
-//     cvv = 'CVV is required'
-// }
-const errorReducer = (state: any, action: Action) => {
-    switch (action.type) {
-        case ActionTypes.inputError:
-            return handleInputError(state, action.payload);
-        case ActionTypes.formEmpty:
-            return handleEmptyForm(state, action.payload);
-        case ActionTypes.inputFocus:
-            return resetInputErrorState(state, action.payload);
+const loadingReducer = (state: LoadingState, action: Action) => {
+    const { type } = action
+
+    switch(type) {
+        case LoadingActions.BrainTreeIdle:
+            return {
+                ...state,
+                btLoading: false,
+            }
+        case LoadingActions.BrainTreeLoading:
+            return {
+                ...state,
+                btLoading: true,
+            }
+        case LoadingActions.EZ3Idle:
+            return {
+                ...state,
+                ez3Loading: false,
+            }
+        case LoadingActions.EZ3Loading:
+            return {
+                ...state,
+                ez3Loading: false,
+            }
         default:
             return state;
+        
     }
+}
+
+const handleTokenSuccess = async (
+        payload: any,
+        billingAddress: any,
+        handleModalError: (message: string, title: string) => void
+    ) => {
+    const { nonce } = payload;
+    const { error, success, data } = await createCustomer(billingAddress, nonce);
+    success
+        ? handleCustomerSuccess(data)
+        : handleCustomerError(handleModalError, error);
 };
 
-const handleTokenError = (error: any, dispatch: any) => {
-    switch (error.code) {
-        case 'HOSTED_FIELDS_FIELDS_EMPTY':
-            return dispatch({type: ActionTypes.formEmpty, payload: error});
-
-        case 'HOSTED_FIELDS_FIELDS_INVALID':
-            return dispatch({type: ActionTypes.inputError, payload: error});
-
-        case 'HOSTED_FIELDS_TOKENIZATION_FAIL_ON_DUPLICATE':
-            return console.error('This payment method already exists in your vault.');
-
-        case 'HOSTED_FIELDS_TOKENIZATION_CVV_VERIFICATION_FAILED':
-            return console.error('CVV did not pass verification');
-
-        case 'HOSTED_FIELDS_FAILED_TOKENIZATION':
-            return console.error('Tokenization failed server side. Is the card valid?');
-
-        case 'HOSTED_FIELDS_TOKENIZATION_NETWORK_ERROR':
-            return console.error('Network error occurred when tokenizing.');
-
-        default:
-          return console.error('Something bad happened!', error);
-      }
+const handleCustomerSuccess = (_response: any) => {
+    console.log('customer successfully created');
+    // this is where the subscription api will be called
 };
 
-const resetInputErrorState = (state: any, inputKey: any) => ({
-    ...state,
-    [inputKey]: initialInputState,
-});
+const handleCustomerError = (
+        handleModalError: (message: string, title: string) => void, response: any
+    ) => {
 
-const handleEmptyForm = (state: any, _payload: any) => {
-const forwardedPayload = {
-    details: {
-        invalidFieldKeys: Object.keys(initialFormErrorStates),
-    },
-};
+    const {
+        verificationError,
+        existingCustomerError,
+    } = response;
 
-return handleInputError(state, forwardedPayload);
-};
+    if (verificationError) {
+        const message = "We're experiencing difficulty processing your transaction. Please contact us or try again later.";
+        const title = "Something's gone wrong";
+        handleModalError(message, title);
+    }
 
-const handleInputError = (state: any, payload: any) => {
-const { details: {invalidFieldKeys} } = payload;
-const copy = state;
-
-invalidFieldKeys.map((key: string) => {
-    // @ts-ignore
-    const value = $(CCSelectors[key]);
-    console.log(value, 'value');
-    // @ts-ignore
-    copy[key] = { ...copy[key], hasError: true, message: InputRequiredMessages[key] };
-});
-
-return { ...copy};
-};
-
-const getCustomer = async (email: string) => {
-    try {
-        return await fetch(`${LOCAL_URL}/customer/get-customer?email=${email}`).then(res => res.json());
-    } catch (error) {
-        console.error(error);
+    if (existingCustomerError) {
+        // this should never happen, unless the initial customer check somehow fails
     }
 };
 
@@ -400,7 +487,7 @@ const mapFromCheckoutProps: MapToPropsFactory<CheckoutContextProps, any, any> = 
         } = props;
 
         const { checkoutState } = context;
-        console.log(context);
+        
         const {
             data: {
                 getCheckout,
