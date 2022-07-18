@@ -3,28 +3,32 @@
 import classNames from 'classnames';
 import React, { useReducer, FC } from 'react';
 
+import { Action } from './errorReducer';
+import { VisibilityActions } from './MultiplePaymentForm';
+
 export interface SavedCard {
     cardType: string;
-    expirationDate: string;
-    isDefault: boolean;
-    last4: string;
-    id: string;
+    expirationDate?: string;
+    isDefault?: boolean;
+    last4?: string;
+    id?: string;
 }
 interface SavedCardFormProps {
     savedCards?: SavedCard[];
     currentCard: SavedCard | null;
     setCurrentCard(card: SavedCard): void;
+    dispatchVisibility(action: Action): void;
 }
 
 const SavedCardForm: FC<SavedCardFormProps> = ({
         savedCards = [],
         currentCard,
         setCurrentCard,
+        dispatchVisibility,
     }) => {
 
     const [dropdownOpen, toggleDropdownOpen] = useReducer(state => !state, false);
-
-    if ( ! currentCard ) { return null; }
+    const [newCardSelected, toggleNewCardSelected] = useReducer(state => !state, false);
 
     const renderDropdown = () => {
         const dropdownStyles = {
@@ -37,12 +41,27 @@ const SavedCardForm: FC<SavedCardFormProps> = ({
             willChange: 'transform',
         };
 
+        const AddNewCard = () => {
+            const onClick = () => {
+                toggleDropdownOpen();
+                setCurrentCard(null);
+                dispatchVisibility({ type: VisibilityActions.showNewCard });
+            };
+
+            return <PaymentSelect isNewCard={ true } onClick={ onClick } />;
+        };
+
         const Options = () =>
             <>
                 {
                     savedCards.map(card => {
-                        const onClick = () => setCurrentCard(card);
-                        const isSelected = card.id === currentCard.id;
+                        const onClick = () => {
+                            setCurrentCard(card);
+                            dispatchVisibility({ type: VisibilityActions.hideNewCard });
+                            toggleDropdownOpen();
+                        };
+
+                        const isSelected = card?.id === currentCard?.id;
 
                         return (
                             <li
@@ -54,6 +73,9 @@ const SavedCardForm: FC<SavedCardFormProps> = ({
                         );
                     })
                 }
+                <li className="instrumentSelect-option instrumentSelect-option--addNew dropdown-menu-item">
+                    <AddNewCard />
+                </li>
             </>;
 
         return (
@@ -82,18 +104,20 @@ const SavedCardForm: FC<SavedCardFormProps> = ({
                             {
                                 // icon
                             }
-                            <title id="iconCardVisaTitle">{ cardType }</title>
+                            <title>{ isNewCard ? cardType : 'Use a different card' }</title>
                     </div>
-                    <div className="instrumentSelect-card" data-test="instrument-select-last4">{ `${cardType} ending in ${last4}` }</div>
-                    <div className="instrumentSelect-expiry" data-test="instrument-select-expiry">{ `Expires ${expirationDate}` }</div>
+                    <div className="instrumentSelect-card" data-test="instrument-select-last4">{ isNewCard ?  'Use a different card' : `${cardType} ending in ${last4}`  }</div>
+                    <div className="instrumentSelect-expiry" data-test="instrument-select-expiry">{ isNewCard || `Expires ${expirationDate}` }</div>
                 </div>
             </button>
         );
 
     return (
-        <div className="instrumentSelect">
+        <div className="instrumentSelect custom-payment-select">
             <div className="dropdownTrigger">
-                <PaymentSelect { ...currentCard } isDropdownButton={ true } onClick={ toggleDropdownOpen } />
+                { Boolean(currentCard) && <PaymentSelect { ...currentCard } isDropdownButton={ true } onClick={ toggleDropdownOpen } /> }
+                { Boolean(currentCard) || <PaymentSelect isDropdownButton={ true } isNewCard={ true } onClick={ toggleDropdownOpen } /> }
+
             </div>
             {
                 dropdownOpen && renderDropdown()

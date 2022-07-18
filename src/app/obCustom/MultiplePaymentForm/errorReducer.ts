@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/tslint/config */
-interface Action {
+export interface Action {
     type: string;
-    payload: any;
+    payload?: any | null;
 }
 
 export enum ActionTypes {

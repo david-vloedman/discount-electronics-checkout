@@ -2,9 +2,8 @@
 /* eslint-disable react/jsx-no-bind */
 /* eslint-disable react-hooks/exhaustive-deps */
 /* eslint-disable import/no-internal-modules */
-// @ts-nocheck
 import classNames from 'classnames';
-import React, { FC, useCallback, useEffect, useReducer, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useReducer, useRef, useState } from 'react';
 
 import { withCheckout, CheckoutContextProps } from '../../checkout';
 import { MapToPropsFactory } from '../../common/hoc';
@@ -12,7 +11,7 @@ import withPayment from '../../payment/withPayment';
 import { IconLock } from '../../ui/icon';
 import { LoadingOverlay } from '../../ui/loading';
 
-import { errorReducer, handleTokenError, initialFormErrorStates, ActionTypes } from './errorReducer';
+import { errorReducer, handleTokenError, initialFormErrorStates, ActionTypes, Action } from './errorReducer';
 import { createCustomer, getCustomer } from './utils/customer-helpers';
 import FormFieldError from './FormFieldError';
 import MultiplePaymentErrorModal from './MultiplePaymentErrorModal';
@@ -31,7 +30,6 @@ const initialErrorModalState = {
     title: '',
 };
 
-
 interface ExistingCustomerState {
     isLoaded: boolean
     customer: {
@@ -47,7 +45,22 @@ const initialExistingCustomer:ExistingCustomerState = {
     currentCard: null
 }
 
-const initialLoadingState = {
+interface VisibilityState {
+    existingCards: boolean;
+    newCard: boolean;
+}
+
+const initialVisibilityState:VisibilityState = {
+    existingCards: false,
+    newCard: false
+}
+
+interface LoadingState {
+    btLoading: boolean;
+    ez3Loading: boolean;
+}
+
+const initialLoadingState: LoadingState = {
     btLoading: false,
     ez3Loading: false,
 }
@@ -69,26 +82,17 @@ const MultiplePaymentForm = (props: any) => {
         expirationDate,
     } , dispatchFormAction] = useReducer(errorReducer, initialFormErrorStates);
 
-    const [isLoading, setIsLoading] = useState(() => initialLoadingState);
+    const [isLoading, dispatchLoading] = useReducer(loadingReducer, initialLoadingState);
     const [errorModalState, updateErrorModalState] = useState(() => initialErrorModalState);
-    const [existingCustomer, updateExistingCustomer] = useState(() => initialExistingCustomer)
+    const [existingCustomer, updateExistingCustomer] = useState(() => initialExistingCustomer);
+    const [visibilityState, dispatchVisibilityAction] = useReducer(visibilityReducer, initialVisibilityState)
 
+    const btMainRef = useRef(null)
     const btClientRef = useRef(null);
     const hostedFieldRef = useRef(null);
 
-    const toggleBTLoading = () => setIsLoading(state => ({
-        ...state,
-        btLoading: !state.btLoading
-    }))
-
-    const toggleEZ3Loading = () => setIsLoading(state => ({
-        ...state,
-        ez3Loading: !state.ez3Loading
-    }))
-
     const setupNewPaymentForm = useCallback((err: any, hostedFieldsInstance: any) => {
         if (err) {
-            toggleBTLoading()
             return console.log('MultiplePaymentForm -> setupForm error:', err);
         }
 
@@ -98,18 +102,34 @@ const MultiplePaymentForm = (props: any) => {
             dispatchFormAction({type: ActionTypes.inputFocus, payload: e.emittedBy})
         );
 
-        toggleBTLoading()
+        dispatchLoading({ type: LoadingActions.BrainTreeIdle })
+        
     }, []);
 
-    const handleBraintree = useCallback((braintree: any) => (err: any, clientInstance: any)  => {
+    const handleBraintree = useCallback((err: any, clientInstance: any)  => {
+        console.log('handling bt')
         if (err) {
-            toggleBTLoading()
+            dispatchLoading({ type: LoadingActions.BrainTreeIdle })
             return console.log('MultiplePaymentForm -> handleBraintree error:', err);
         }
 
-        const { hostedFields: { create } } = braintree;
         btClientRef.current = clientInstance;
 
+        const { current: braintree } = btMainRef
+        
+        if (!visibilityState.newCard) { 
+            dispatchLoading({ type: LoadingActions.BrainTreeIdle })
+            return; 
+        }
+
+        if(!braintree) {
+            console.error('Braintree not found')
+            return
+
+        }
+
+        const { hostedFields: { create } } = braintree;
+        // @ts-ignore
         create({
             client: clientInstance,
             fields: {
@@ -132,9 +152,17 @@ const MultiplePaymentForm = (props: any) => {
         }, setupNewPaymentForm);
 
         
-    }, [setupNewPaymentForm]);
+    }, [setupNewPaymentForm, visibilityState]);
 
     const handleFormSubmit = () => {
+        const { isLoaded, currentCard} = existingCustomer;
+        
+        isLoaded && currentCard 
+            ? handleSavedCardSubmit()
+            : handleNewCardSubmit()
+    };
+
+    const handleNewCardSubmit = () => {
         const { current: hostedFields } = hostedFieldRef;
         // @ts-ignore
         hostedFields?.tokenize((err: any, payload: any) =>
@@ -143,6 +171,8 @@ const MultiplePaymentForm = (props: any) => {
                     : handleTokenSuccess(payload, billingAddress, handleModalError)
             );
     };
+
+    const handleSavedCardSubmit = () => {}
 
     const handleSignInClick = (e: any) => {
         e.preventDefault();
@@ -164,7 +194,7 @@ const MultiplePaymentForm = (props: any) => {
             currentCard: card
         }))
     
-
+    
     /**
      *
      *  Side effects
@@ -172,6 +202,7 @@ const MultiplePaymentForm = (props: any) => {
      */
     useEffect(() => console.log(existingCustomer), [existingCustomer])
     useEffect(() => console.log(isLoading), [isLoading])
+    // useEffect(() => console.log(visibilityState), [visibilityState])
     /*  Component Mount/Unmount */
     useEffect(() => {
         const tryGetCustomer = async () => {
@@ -181,6 +212,12 @@ const MultiplePaymentForm = (props: any) => {
             // @ts-ignore
             const defaultCard = savedCards.find(({ isDefault }) => isDefault)
 
+            if ( data ) {
+                dispatchVisibilityAction({ type: VisibilityActions.toggleExistingCard })
+            } else {
+                dispatchVisibilityAction({ type: VisibilityActions.toggleNewCard })
+            }
+
             updateExistingCustomer(state => ({
                 ...state,
                 isLoaded: true,
@@ -188,17 +225,14 @@ const MultiplePaymentForm = (props: any) => {
                 currentCard: defaultCard
             }))
             
-            toggleEZ3Loading()
+            dispatchLoading({ type: LoadingActions.EZ3Idle })
         }
 
+        
         disableSubmit(method, customer.isGuest);
 
         if( ! customer.isGuest ) {
-            setIsLoading(() => ({
-                ez3Loading: true,
-                btLoading: true
-            }));
-            
+            dispatchLoading({ type: LoadingActions.EZ3Loading })          
             setSubmit(method, handleFormSubmit);
             tryGetCustomer();
         }
@@ -216,22 +250,36 @@ const MultiplePaymentForm = (props: any) => {
 
     // braintree setup entry point
     useEffect(() => {
+        dispatchLoading( { type: LoadingActions.BrainTreeLoading })
         if (customer.isGuest) { return; }
         // @ts-ignore
         const { braintree = null } = window;
 
         if (braintree) {
+
+            btMainRef.current = braintree
+
             const { client: { create } } = braintree;
+
             create(
                 {
                     authorization: 'sandbox_rzm2kvvr_nmcdvfz276mxy4fv',
                 },
-                handleBraintree(braintree)
+                handleBraintree
             );
+        } else {
+            console.error('Braintree not found')
+            dispatchLoading({ type: LoadingActions.BrainTreeIdle })
         }
     }, [handleBraintree]);
 
-    const hasExistingAccount = existingCustomer.isLoaded && Boolean(existingCustomer.customer)
+    useEffect(() => {
+        const { newCard: newCardFormVisible } = visibilityState
+        if(newCardFormVisible) {
+            handleBraintree(null, btClientRef.current)
+        }
+        
+    }, [visibilityState, handleBraintree])
 
     return (
         <div className="paymentMethod paymentMethod--creditCard">
@@ -251,34 +299,35 @@ const MultiplePaymentForm = (props: any) => {
                     
                     <div className="form-ccFields">
                         {
-                            hasExistingAccount && <SavedCardForm currentCard={ existingCustomer.currentCard } savedCards={ existingCustomer.customer?.savedCards } setCurrentCard={ setExistingCustomerCard } />
+                            visibilityState.existingCards && 
+                            <SavedCardForm currentCard={ existingCustomer.currentCard } dispatchVisibility={ dispatchVisibilityAction } savedCards={ existingCustomer.customer?.savedCards } setCurrentCard={ setExistingCustomerCard } />
                         }
                         {
-                            hasExistingAccount || 
-                        <>
-                            <div className={ classNames('form-field form-field--ccNumber', { ['form-field--error']: number.hasError }) }>
-                                <label className="form-label optimizedCheckout-form-label" htmlFor="hostedForm.errors.cardNumber">Credit Card Number</label>
-                                <div className="form-input optimizedCheckout-form-input has-icon" id="cc-multiple" />
-                                <IconLock />
-                                <FormFieldError hasError={ number.hasError } message={ number.message } name={ 'hostedForm.errors.cardNumber' } />
-                            </div>
-                            <div className={ classNames('form-field form-field--ccExpiry', { ['form-field--error']: expirationDate.hasError }) }>
-                                <label className="form-label optimizedCheckout-form-label" htmlFor="hostedForm.errors.cardExpiry">Expiration</label>
-                                <div className="form-input optimizedCheckout-form-input has-icon" id="expiration-multiple" />
-                                <FormFieldError hasError={ expirationDate.hasError } message={ expirationDate.message } name={ 'hostedForm.errors.cardExpiry' } />
-                            </div>
-                            <div className={ classNames('form-field form-field--ccName', { ['form-field--error']: cardholderName.hasError }) }>
-                                <label className="form-label optimizedCheckout-form-label" htmlFor="hostedForm.errors.cardName">Name on Card</label>
-                                <div className="form-input optimizedCheckout-form-input has-icon" id="name-multiple" />
-                                <FormFieldError hasError={ cardholderName.hasError } message={ cardholderName.message } name={ 'hostedForm.errors.cardName' } />
-                            </div>
-                            <div className={ classNames('form-field form-ccFields-field--ccCvv', { ['form-field--error']: cvv.hasError }) }>
-                                <label className="form-label optimizedCheckout-form-label" htmlFor="hostedForm.errors.cardCode">CVV</label>
-                                <div className="form-input optimizedCheckout-form-input has-icon" id="cvv-multiple" />
-                                <IconLock />
-                                <FormFieldError hasError={ cvv.hasError } message={ cvv.message } name={ 'hostedForm.errors.cardCode' } />
-                            </div>  
-                        </>
+                            visibilityState.newCard && 
+                            <>
+                                <div className={ classNames('form-field form-field--ccNumber', { ['form-field--error']: number.hasError }) }>
+                                    <label className="form-label optimizedCheckout-form-label" htmlFor="hostedForm.errors.cardNumber">Credit Card Number</label>
+                                    <div className="form-input optimizedCheckout-form-input has-icon" id="cc-multiple" />
+                                    <IconLock />
+                                    <FormFieldError hasError={ number.hasError } message={ number.message } name={ 'hostedForm.errors.cardNumber' } />
+                                </div>
+                                <div className={ classNames('form-field form-field--ccExpiry', { ['form-field--error']: expirationDate.hasError }) }>
+                                    <label className="form-label optimizedCheckout-form-label" htmlFor="hostedForm.errors.cardExpiry">Expiration</label>
+                                    <div className="form-input optimizedCheckout-form-input has-icon" id="expiration-multiple" />
+                                    <FormFieldError hasError={ expirationDate.hasError } message={ expirationDate.message } name={ 'hostedForm.errors.cardExpiry' } />
+                                </div>
+                                <div className={ classNames('form-field form-field--ccName', { ['form-field--error']: cardholderName.hasError }) }>
+                                    <label className="form-label optimizedCheckout-form-label" htmlFor="hostedForm.errors.cardName">Name on Card</label>
+                                    <div className="form-input optimizedCheckout-form-input has-icon" id="name-multiple" />
+                                    <FormFieldError hasError={ cardholderName.hasError } message={ cardholderName.message } name={ 'hostedForm.errors.cardName' } />
+                                </div>
+                                <div className={ classNames('form-field form-ccFields-field--ccCvv', { ['form-field--error']: cvv.hasError }) }>
+                                    <label className="form-label optimizedCheckout-form-label" htmlFor="hostedForm.errors.cardCode">CVV</label>
+                                    <div className="form-input optimizedCheckout-form-input has-icon" id="cvv-multiple" />
+                                    <IconLock />
+                                    <FormFieldError hasError={ cvv.hasError } message={ cvv.message } name={ 'hostedForm.errors.cardCode' } />
+                                </div>  
+                            </>
                     }
                     </div>
                     
@@ -300,6 +349,98 @@ const MultiplePaymentForm = (props: any) => {
     );
 };
 
+export enum VisibilityActions {
+    toggleNewCard = 'TOGGLE_NEW',
+    toggleExistingCard = 'TOGGLE_EXISTING',
+    reset = 'RESET',
+    hideNewCard = 'HIDE_NEW',
+    showNewCard = 'SHOW_NEW',
+    hideExistingCard = 'HIDE_EXISTING',
+    showExistingCard = 'SHOW_EXISTING',
+}
+
+const visibilityReducer = (state: VisibilityState, action: Action) => {
+    const { type }= action
+
+    switch(type) {
+        case VisibilityActions.toggleExistingCard:
+            const { existingCards } = state
+            return {
+                ...state,
+                existingCards: !existingCards
+            }
+        case VisibilityActions.toggleNewCard:
+            const { newCard } = state
+            return {
+                ...state,
+                newCard: !newCard
+            }
+        case VisibilityActions.reset:
+            return {
+                ...initialVisibilityState
+            }
+        case VisibilityActions.hideExistingCard: 
+            return {
+                ...state,
+                existingCards: false
+            }
+        case VisibilityActions.showExistingCard: 
+            return {
+                ...state,
+                existingCards: true
+            }
+        case VisibilityActions.hideNewCard: 
+            return {
+                ...state,
+                newCard: false
+            }
+        case VisibilityActions.showNewCard: 
+            return {
+                ...state,
+                newCard: true
+            }
+        default:
+            return state
+    }
+}
+
+enum LoadingActions {
+    BrainTreeLoading = 'BRAIN_TREE_LOADING',
+    BrainTreeIdle = 'BRAIN_TREE_IDLE',
+    EZ3Loading = 'EZ3_LOADING',
+    EZ3Idle= 'EZ3_Idle',
+}
+
+
+const loadingReducer = (state: LoadingState, action: Action) => {
+    const { type } = action
+
+    switch(type) {
+        case LoadingActions.BrainTreeIdle:
+            return {
+                ...state,
+                btLoading: false,
+            }
+        case LoadingActions.BrainTreeLoading:
+            return {
+                ...state,
+                btLoading: true,
+            }
+        case LoadingActions.EZ3Idle:
+            return {
+                ...state,
+                ez3Loading: false,
+            }
+        case LoadingActions.EZ3Loading:
+            return {
+                ...state,
+                ez3Loading: false,
+            }
+        default:
+            return state;
+        
+    }
+}
 
 const handleTokenSuccess = async (
         payload: any,
@@ -313,7 +454,7 @@ const handleTokenSuccess = async (
         : handleCustomerError(handleModalError, error);
 };
 
-const handleCustomerSuccess = (response: any) => {
+const handleCustomerSuccess = (_response: any) => {
     console.log('customer successfully created');
     // this is where the subscription api will be called
 };
