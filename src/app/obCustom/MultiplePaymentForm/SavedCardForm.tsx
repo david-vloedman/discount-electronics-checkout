@@ -1,18 +1,15 @@
+/* eslint-disable import/no-internal-modules */
 /* eslint-disable react/jsx-no-bind */
 // @ts-nocheck
 import classNames from 'classnames';
 import React, { useReducer, FC } from 'react';
 
-import { Action } from './errorReducer';
-import { VisibilityActions } from './MultiplePaymentForm';
+import { CreditCardIcon } from '../../payment/creditCard';
 
-export interface SavedCard {
-    cardType: string;
-    expirationDate?: string;
-    isDefault?: boolean;
-    last4?: string;
-    id?: string;
-}
+import { Action } from './reducers/errorReducer';
+import { VisibilityActions } from './reducers/visibilityReducer';
+import { SavedCard } from './types';
+
 interface SavedCardFormProps {
     savedCards?: SavedCard[];
     currentCard: SavedCard | null;
@@ -61,7 +58,7 @@ const SavedCardForm: FC<SavedCardFormProps> = ({
                             toggleDropdownOpen();
                         };
 
-                        const isSelected = card?.id === currentCard?.id;
+                        const isSelected = card?.token === currentCard?.token;
 
                         return (
                             <li
@@ -73,9 +70,13 @@ const SavedCardForm: FC<SavedCardFormProps> = ({
                         );
                     })
                 }
-                <li className="instrumentSelect-option instrumentSelect-option--addNew dropdown-menu-item">
-                    <AddNewCard />
-                </li>
+                {
+                    Boolean(currentCard) &&
+                    <li className="instrumentSelect-option instrumentSelect-option--addNew dropdown-menu-item">
+                        <AddNewCard />
+                    </li>
+                }
+
             </>;
 
         return (
@@ -101,9 +102,7 @@ const SavedCardForm: FC<SavedCardFormProps> = ({
             <button className={ classNames({['instrumentSelect-button optimizedCheckout-form-select dropdown-button form-input']: isDropdownButton }) } data-test="instrument-select" onClick={ onClick } type="button">
                 <div className={ 'instrumentSelect-details' }>
                     <div className="icon cardIcon-icon icon--medium" data-test="credit-card-icon-visa">
-                            {
-                                // icon
-                            }
+                            <CreditCardIcon cardType={ cardType } />
                             <title>{ isNewCard ? cardType : 'Use a different card' }</title>
                     </div>
                     <div className="instrumentSelect-card" data-test="instrument-select-last4">{ isNewCard ?  'Use a different card' : `${cardType} ending in ${last4}`  }</div>

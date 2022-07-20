@@ -1,4 +1,4 @@
-import { CheckoutSelectors, EmbeddedCheckoutMessenger, EmbeddedCheckoutMessengerOptions, Order, ShopperConfig, StepTracker, StoreConfig } from '@bigcommerce/checkout-sdk';
+import { Checkout, CheckoutSelectors, EmbeddedCheckoutMessenger, EmbeddedCheckoutMessengerOptions, Order, ShopperConfig, StepTracker, StoreConfig } from '@bigcommerce/checkout-sdk';
 import classNames from 'classnames';
 import DOMPurify from 'dompurify';
 import React, { lazy, Component, Fragment, ReactNode } from 'react';
@@ -11,6 +11,8 @@ import { isEmbedded, EmbeddedCheckoutStylesheet } from '../embeddedCheckout';
 import { CreatedCustomer, GuestSignUpForm, PasswordSavedSuccessAlert, SignedUpSuccessAlert, SignUpFormValues } from '../guestSignup';
 import { AccountCreationFailedError, AccountCreationRequirementsError } from '../guestSignup/errors';
 import { TranslatedString } from '../locale';
+// eslint-disable-next-line import/no-internal-modules
+import { addOrderIdToSubscription } from '../obCustom/MultiplePaymentForm/utils/middleware-helpers';
 import { Button, ButtonVariant } from '../ui/button';
 import { LazyContainer, LoadingSpinner } from '../ui/loading';
 import { MobileView } from '../ui/responsive';
@@ -51,6 +53,7 @@ export interface OrderConfirmationProps {
 interface WithCheckoutOrderConfirmationProps {
     order?: Order;
     config?: StoreConfig;
+    checkout?: Checkout;
     loadOrder(orderId: number): Promise<CheckoutSelectors>;
     isLoadingOrder(): boolean;
 }
@@ -73,6 +76,14 @@ class OrderConfirmation extends Component<
             orderId,
         } = this.props;
 
+        // @ts-ignore
+        addOrderIdToSubscription(orderId)
+            .then(res => res.json())
+            .catch(err => {
+                // eslint-disable-next-line @typescript-eslint/tslint/config
+                console.error(err)
+            });
+
         loadOrder(orderId)
             .then(({ data }) => {
                 const { links: { siteLink = '' } = {} } = data.getConfig() || {};
@@ -86,6 +97,7 @@ class OrderConfirmation extends Component<
                 createStepTracker().trackOrderComplete();
             })
             .catch(this.handleUnhandledError);
+
     }
 
     render(): ReactNode {
@@ -299,6 +311,7 @@ export function mapToOrderConfirmationProps(
             data: {
                 getOrder,
                 getConfig,
+                getCheckout,
             },
             statuses: {
                 isLoadingOrder,
@@ -309,12 +322,14 @@ export function mapToOrderConfirmationProps(
 
     const config = getConfig();
     const order = getOrder();
+    const checkout = getCheckout();
 
     return {
         config,
         isLoadingOrder,
         loadOrder: checkoutService.loadOrder,
         order,
+        checkout,
     };
 }
 

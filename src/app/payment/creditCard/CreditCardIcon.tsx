@@ -15,7 +15,7 @@ const CreditCardIcon: FunctionComponent<CreditCardIconProps> = ({
         testId: `credit-card-icon-${cardType || 'default'}`,
     };
 
-    switch (cardType) {
+    switch (cardType?.toLocaleLowerCase()) {
     case 'american-express':
         return <IconCardAmex { ...iconProps } />;
 

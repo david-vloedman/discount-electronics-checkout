@@ -21,7 +21,7 @@ enum InputRequiredMessages {
 //     cardholderName = 'Name on Card must be valid',
 //     number = 'Credit Card Number must be valid',
 //     expirationDate = 'Expiration Date must be a valid future date in MM/YY format',
-//     cvv = 'CVV is required'
+//     cvv = 'CVV must be valid'
 // }
 
 export const initialInputState = {

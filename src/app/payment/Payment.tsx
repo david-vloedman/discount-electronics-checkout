@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { CartChangedError, CheckoutSelectors, CheckoutSettings, OrderRequestBody, PaymentMethod } from '@bigcommerce/checkout-sdk';
 import { memoizeOne } from '@bigcommerce/memoize';
 import { compact, find, isEmpty, noop } from 'lodash';
@@ -80,7 +81,7 @@ class Payment extends Component<PaymentProps & WithCheckoutPaymentProps & WithLa
 
     private getContextValue = memoizeOne(() => {
 
-        const { onSubmitError } = this.props;
+        const { onSubmitError, onSubmit } = this.props;
 
         return {
             disableSubmit: this.disableSubmit,
@@ -89,6 +90,7 @@ class Payment extends Component<PaymentProps & WithCheckoutPaymentProps & WithLa
             hidePaymentSubmitButton: this.hidePaymentSubmitButton,
             navToLoginStep: this.navToLoginStep,
             handleSubmitError: onSubmitError,
+            onSubmit,
         };
     });
 
@@ -404,10 +406,12 @@ class Payment extends Component<PaymentProps & WithCheckoutPaymentProps & WithLa
         }
 
         try {
-            await submitOrder(mapToOrderRequestBody(values, isPaymentDataRequired()));
-            onSubmit();
+            console.log(mapToOrderRequestBody(values, isPaymentDataRequired()))
+
+            // await submitOrder(mapToOrderRequestBody(values, isPaymentDataRequired()));
+            // onSubmit();
         } catch (error) {
-            console.log('error', error)
+
             if (error.type === 'payment_method_invalid') {
                 return loadPaymentMethods();
             }

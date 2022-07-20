@@ -16,6 +16,7 @@ export interface PaymentContextProps {
     setSubmit(method: PaymentMethod, fn: ((values: PaymentFormValues) => void) | null): void;
     setValidationSchema(method: PaymentMethod, schema: ObjectSchema<Partial<PaymentFormValues>> | null): void;
     hidePaymentSubmitButton(method: PaymentMethod, hidden?: boolean): void;
+    onSubmit(): void | undefined;
 }
 
 const PaymentContext = createContext<PaymentContextProps | undefined>(undefined);

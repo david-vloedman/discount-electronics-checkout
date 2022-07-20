@@ -3,12 +3,11 @@
 // const FB_URL = 'https://us-central1-de-pay-after-app.cloudfunctions.net'
 const LOCAL_URL = 'http://localhost:5001/de-pay-after-app/us-central1';
 
-export const createCustomer = async (billingAddress: any, nonce: string, checkout: any) => {
+export const createCustomer = async (billingAddress: any, nonce: string, customerId: string) => {
 
     try {
         const { firstName, lastName, email, address1, address2, countryCode, stateOrProvidenceCode, postalCode, phone, city } = billingAddress;
-        const { customerId } = checkout.cart
-
+        
         const requestData = {
             firstName,
             lastName,
@@ -21,7 +20,7 @@ export const createCustomer = async (billingAddress: any, nonce: string, checkou
             state: stateOrProvidenceCode,
             postalCode,
             nonce,
-            "cusId": customerId
+            cusId: customerId
         };
 
         return await fetch(`${LOCAL_URL}/customer/create-customer`, {method: 'POST', body: JSON.stringify(requestData) } ).then(res => res.json());
@@ -42,9 +41,41 @@ export const getCustomer = async (email: string) => {
     }
 };
 
+export const createSubscription = async (customerId: string, subPrice: number, checkoutId: string, token: string) => {
+    const requestData = {
+        customerId,
+        subPrice,
+        checkoutId,
+        token
+    }
+
+    try {
+        return await fetch(`${LOCAL_URL}/customer/new-subscription`, { method: 'POST', body: JSON.stringify(requestData) }).then(res => res.json());
+    } catch( error ) {
+        console.error(error)
+        return null
+    }
+}
+
+export const addOrderIdToSubscription = async (orderId: number) => {
+    const requestData = {
+        orderId
+    }
+
+    try {
+        return await fetch(`${LOCAL_URL}/customer/add-order-id`, { method: 'POST', body: JSON.stringify(requestData) }).then(res => res.json());
+    } catch( error ) {
+        console.error(error)
+        return null
+    }
+}
+
 export default () => {
     return {
         createCustomer,
-        getCustomer
+        getCustomer,
+        createSubscription
     }
 }
+
+
