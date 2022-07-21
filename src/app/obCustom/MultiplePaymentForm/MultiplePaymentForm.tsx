@@ -105,8 +105,8 @@ const MultiplePaymentForm = (props: any) => {
 
     const handleBraintree = (err: any, clientInstance: any)  => {
         if (err) {
-            dispatchLoading({ type: LoadingActions.BrainTreeIdle });
-
+            // dispatchLoading({ type: LoadingActions.BrainTreeIdle });
+            handleModalError('Payment processor is not responding. Please contact us or try again later.')
             return console.log('MultiplePaymentForm -> handleBraintree error:', err);
         }
 
@@ -115,6 +115,7 @@ const MultiplePaymentForm = (props: any) => {
 
     const handleHostedFields = () => {
         if (!btInstance || !btClient) {
+            handleModalError();
             return console.error('handleHostedFields -> Braintree not initialized');
         }
 
@@ -227,12 +228,23 @@ const MultiplePaymentForm = (props: any) => {
 
     const handleErrorModalClose = () => updateErrorModalState(initialErrorModalState);
 
-    const handleModalError = (message: string, title: string) =>
+    const handleModalError = (message?: string, title?: string) => {
+        const defaultTitle = "Something's gone wrong";
+        const defaultMessage = "Please contact us or try again later."
+
+        message = message || defaultMessage
+        title = title || defaultTitle
+
         updateErrorModalState({
             hasError: true,
             message,
             title,
         });
+        disableSubmit(method, false)
+        dispatchLoading({ type: LoadingActions.BrainTreeIdle })
+        dispatchLoading({ type: LoadingActions.EZ3Idle })
+    }
+        
 
     const setExistingCustomerCard = (card: SavedCard) =>
         updateExistingCustomer(state => ({
@@ -314,7 +326,7 @@ const MultiplePaymentForm = (props: any) => {
                 );
             } else {
                 console.error('Braintree not found');
-                dispatchLoading({ type: LoadingActions.BrainTreeIdle });
+                handleModalError()
             }
         };
 
@@ -442,7 +454,7 @@ const handleTokenSuccess = async (
         billingAddress: any,
         checkout: any,
         setSubscriptionCreated: (state: boolean) => void,
-        handleModalError: (message: string, title: string) => void,
+        handleModalError: (message?: string, title?: string) => void,
         dispatchLoading: (action: Action) => void
     ) => {
     const { nonce } = payload;
@@ -489,21 +501,20 @@ const handleCreateSubscription = async (
 }
 
 const handleCustomerError = (
-        handleModalError: (message: string, title: string) => void, response: any
+        handleModalError: (message?: string, title?: string) => void, response: any
     ) => {
 
     const {
         verificationError,
     } = response;
-    const title = "Something's gone wrong";
-
+    
     if (verificationError) {
         const message = "We're experiencing difficulty processing your transaction. Please contact us or try again later.";
-        return handleModalError(message, title);
+        return handleModalError(message);
     }
 
-    const { message } = response
-    return handleModalError(message, title)
+    
+    return handleModalError()
 };
 
 const mapFromCheckoutProps: MapToPropsFactory<CheckoutContextProps, any, any> = () => {
