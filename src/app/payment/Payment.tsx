@@ -406,10 +406,8 @@ class Payment extends Component<PaymentProps & WithCheckoutPaymentProps & WithLa
         }
 
         try {
-            console.log(mapToOrderRequestBody(values, isPaymentDataRequired()))
-
-            // await submitOrder(mapToOrderRequestBody(values, isPaymentDataRequired()));
-            // onSubmit();
+            await submitOrder(mapToOrderRequestBody(values, isPaymentDataRequired()));
+            onSubmit();
         } catch (error) {
 
             if (error.type === 'payment_method_invalid') {

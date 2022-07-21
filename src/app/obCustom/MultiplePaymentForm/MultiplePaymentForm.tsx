@@ -11,8 +11,8 @@ import withPayment from '../../payment/withPayment';
 import { IconLock } from '../../ui/icon';
 import { LoadingOverlay } from '../../ui/loading';
 
-import { errorReducer, handleTokenError, initialFormErrorStates, ActionTypes } from './reducers/errorReducer';
-import { createCustomer, getCustomer, createSubscription, addOrderIdToSubscription } from './utils/middleware-helpers';
+import { errorReducer, handleTokenError, initialFormErrorStates, ActionTypes, Action } from './reducers/errorReducer';
+import { createCustomer, getCustomer, createSubscription } from './utils/middleware-helpers';
 import FormFieldError from './FormFieldError';
 import MultiplePaymentErrorModal from './MultiplePaymentErrorModal';
 import SavedCardForm from './SavedCardForm';
@@ -65,13 +65,8 @@ const MultiplePaymentForm = (props: any) => {
         setSubmit,
         checkout,
         submitOrder,
-        
         onSubmit
     } = props;
-
-    useEffect(() => console.log(checkout), [checkout])
-
-    console.log(props, 'props')
 
     const [{
         cardholderName,
@@ -135,7 +130,6 @@ const MultiplePaymentForm = (props: any) => {
               },
               number: {
                 selector: CCSelectors.number,
-
               },
               cvv: {
                 selector: CCSelectors.cvv,
@@ -159,32 +153,47 @@ const MultiplePaymentForm = (props: any) => {
     const handleFormSubmit = () => {
         disableSubmit(method, true)
 
-        const { isLoaded, currentCard } = existingCustomer;
-
-        isLoaded && currentCard
-            ? handleSavedCardSubmit()
-            : handleNewCardSubmit();
-    };
-
-    const handleNewCardSubmit = () => {
         const { isChecked } = termsConditions;
 
-        if ( isChecked ) {
+        if( isChecked ) {
             dispatchTermsConditions({ type: TermsConditionsActions.hideError });
-
-            // @ts-ignore
-            hostedFields?.tokenize((err: any, payload: any) =>
-                    err
-                        ? handleTokenError(err, dispatchFormAction)
-                        : handleTokenSuccess(payload, billingAddress, handleModalError, checkout, setSubscriptionCreated)
-                );
+            const { isLoaded, currentCard } = existingCustomer;
+            dispatchLoading({ type: LoadingActions.BrainTreeLoading})
+            isLoaded && currentCard
+                ? handleSavedCardSubmit()
+                : handleNewCardSubmit();
         } else {
             dispatchTermsConditions({ type: TermsConditionsActions.showError });
+            disableSubmit(method, false)
         }
     };
 
+    const handleNewCardSubmit = () => {
+        // @ts-ignore
+        hostedFields?.tokenize((err: any, payload: any) => {
+            if( err ) {
+                disableSubmit(method, false) 
+                dispatchLoading({ type: LoadingActions.BrainTreeIdle})
+                handleTokenError(err, dispatchFormAction)
+            } else {
+                handleTokenSuccess(
+                    payload, 
+                    billingAddress, 
+                    checkout, 
+                    setSubscriptionCreated,  
+                    handleModalError, 
+                    dispatchLoading
+                )
+            }
+        });
+    };
+
     const handleSavedCardSubmit = () => {
-        console.log('using saved card');
+        const { currentCard } = existingCustomer
+        if(currentCard) {
+            const { token = '' } = currentCard
+            handleCreateSubscription(checkout, token, setSubscriptionCreated)
+        }
     };
 
     const handleOrderCreation = async () => {
@@ -299,7 +308,7 @@ const MultiplePaymentForm = (props: any) => {
 
                 create(
                     {
-                        authorization: 'sandbox_pgw4xjzh_hyyc8bcbtzxm3jkt',
+                        authorization: 'sandbox_mfz33jgw_gvxp8cg7y9jydy5v',
                     },
                     handleBraintree
                 );
@@ -316,7 +325,7 @@ const MultiplePaymentForm = (props: any) => {
             tryGetCustomer();
             initializeBraintree();
         }
-        
+
         return () => {
             // @ts-ignore
             btClient?.teardown();
@@ -431,9 +440,10 @@ const MultiplePaymentForm = (props: any) => {
 const handleTokenSuccess = async (
         payload: any,
         billingAddress: any,
-        handleModalError: (message: string, title: string) => void,
         checkout: any,
-        setSubscriptionCreated: (state: boolean) => void
+        setSubscriptionCreated: (state: boolean) => void,
+        handleModalError: (message: string, title: string) => void,
+        dispatchLoading: (action: Action) => void
     ) => {
     const { nonce } = payload;
     const { customer } = checkout;
@@ -450,19 +460,33 @@ const handleCustomerSuccess = async (
         checkout: any,
         setSubscriptionCreated: (state: boolean) => void
     ) => {
+
     const { paymentMethods } = customerData;
-    const { cart, id } = checkout;
-    
-    const { customerId, cartAmount } = cart;
-    const subPrice = parseFloat(cartAmount) / 3;
 
     const token = paymentMethods[0]?.token;
-    const { success } = await createSubscription(customerId, subPrice, id, token);
-
-    if(success) {
-        return setSubscriptionCreated(true)
-    }
+    
+    handleCreateSubscription(checkout, token, setSubscriptionCreated)
+    
 };
+
+const handleCreateSubscription = async (
+    checkout: any, 
+    token: string,
+    setSubscriptionCreated: (state: boolean) => void
+    ) => {
+        const { cart, id } = checkout;
+        const { customerId, cartAmount } = cart;
+        const subPrice = parseFloat(cartAmount) / 3;
+        
+        const data = await createSubscription(customerId, subPrice, id, token);
+        console.log(data)
+        const { success } = data
+        if(success) {
+            return setSubscriptionCreated(true)
+        } else {
+            console.error('Failed to create sub')        
+        }
+}
 
 const handleCustomerError = (
         handleModalError: (message: string, title: string) => void, response: any
@@ -490,7 +514,7 @@ const mapFromCheckoutProps: MapToPropsFactory<CheckoutContextProps, any, any> = 
         } = props;
         
         const { checkoutState, checkoutService } = context;
-        
+        console.log(checkoutService)
         const {
             data: {
                 getCheckout,

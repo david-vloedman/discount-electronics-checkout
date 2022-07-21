@@ -13,6 +13,7 @@ export interface SavedCard {
     isDefault?: boolean;
     last4?: string;
     id?: string;
+    token?: string;
 }
 
 export interface VisibilityState {
