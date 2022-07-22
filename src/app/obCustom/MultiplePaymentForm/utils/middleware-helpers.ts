@@ -20,7 +20,7 @@ export const createCustomer = async (billingAddress: any, nonce: string, custome
             state: stateOrProvidenceCode,
             postalCode,
             nonce,
-            cusId: customerId
+            customerId
         };
 
         return await fetch(`${LOCAL_URL}/customer/create-customer`, {method: 'POST', body: JSON.stringify(requestData) } ).then(res => res.json());
@@ -31,9 +31,9 @@ export const createCustomer = async (billingAddress: any, nonce: string, custome
     }
 };
 
-export const getCustomer = async (email: string) => {
+export const getCustomer = async (customerId: string) => {
     try {
-        return await fetch(`${LOCAL_URL}/customer/get-customer?email=${email}`).then(res => res.json());
+        return await fetch(`${LOCAL_URL}/customer/get-customer?customerId=${customerId}`).then(res => res.json());
     } catch (error) {
         console.error(error);
 
@@ -64,6 +64,19 @@ export const addOrderIdToSubscription = async (orderId: number) => {
 
     try {
         return await fetch(`${LOCAL_URL}/customer/add-order-id`, { method: 'POST', body: JSON.stringify(requestData) }).then(res => res.json());
+    } catch( error ) {
+        console.error(error)
+        return null
+    }
+}
+
+export const cancelSubscription = async (checkoutId: string) => {
+    const requestData = {
+        checkoutId
+    }
+
+    try {
+        return await fetch(`${LOCAL_URL}/customer/cancel-subscription`, { method: 'POST', body: JSON.stringify(requestData) }).then(res => res.json());
     } catch( error ) {
         console.error(error)
         return null

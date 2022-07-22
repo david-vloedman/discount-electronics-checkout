@@ -11,15 +11,16 @@ import withPayment from '../../payment/withPayment';
 import { IconLock } from '../../ui/icon';
 import { LoadingOverlay } from '../../ui/loading';
 
-import { errorReducer, handleTokenError, initialFormErrorStates, ActionTypes, Action } from './reducers/errorReducer';
-import { createCustomer, getCustomer, createSubscription } from './utils/middleware-helpers';
+import { errorReducer, initialFormErrorStates, ActionTypes } from './reducers/errorReducer';
+import { cancelSubscription, getCustomer } from './utils/middleware-helpers';
 import FormFieldError from './FormFieldError';
 import MultiplePaymentErrorModal from './MultiplePaymentErrorModal';
 import SavedCardForm from './SavedCardForm';
-import { ExistingCustomerState, LoadingState, SavedCard, VisibilityState } from './types';
+import { ExistingCustomerState, LoadingState, SavedCard, TermsConditionsState, VisibilityState } from './types';
 import { termsConditionsReducer, TermsConditionsActions } from './reducers/termsConditionsReducer';
 import { VisibilityActions, visibilityReducer } from './reducers/visibilityReducer';
 import { loadingReducer, LoadingActions } from './reducers/loadingReducer';
+import handleFormSubmit from './utils/checkout-submit';
 
 enum CCSelectors {
     cardholderName = '#name-multiple',
@@ -50,14 +51,13 @@ const initialLoadingState: LoadingState = {
     ez3Loading: false,
 };
 
-const initialTCErrorState = {
+const initialTCErrorState: TermsConditionsState = {
     showError: false,
     isChecked: false,
 };
 
 const MultiplePaymentForm = (props: any) => {
     const {
-        billingAddress,
         customer,
         disableSubmit,
         method,
@@ -73,12 +73,12 @@ const MultiplePaymentForm = (props: any) => {
         number,
         cvv,
         expirationDate,
-    } , dispatchFormAction] = useReducer(errorReducer, initialFormErrorStates);
+    } , dispatchFormError] = useReducer(errorReducer, initialFormErrorStates);
 
     const [isLoading, dispatchLoading] = useReducer(loadingReducer, initialLoadingState);
     const [errorModalState, updateErrorModalState] = useState( () => initialErrorModalState );
     const [existingCustomer, updateExistingCustomer] = useState( () => initialExistingCustomer );
-    const [visibilityState, dispatchVisibilityAction] = useReducer(visibilityReducer, initialVisibilityState);
+    const [visibilityState, dispatchVisibility] = useReducer(visibilityReducer, initialVisibilityState);
     const [termsConditions, dispatchTermsConditions] = useReducer(termsConditionsReducer, initialTCErrorState);
     const [btInstance, setBTInstance] = useState( () => null );
     const [btClient, setBTClient] = useState( () => null );
@@ -97,7 +97,7 @@ const MultiplePaymentForm = (props: any) => {
         setHostedFields(hostedFieldsInstance);
 
         hostedFieldsInstance.on('focus', (e: any) =>
-            dispatchFormAction({type: ActionTypes.inputFocus, payload: e.emittedBy})
+            dispatchFormError({type: ActionTypes.inputFocus, payload: e.emittedBy})
         );
 
         dispatchLoading({ type: LoadingActions.BrainTreeIdle });
@@ -151,87 +151,66 @@ const MultiplePaymentForm = (props: any) => {
      *  Form Submit
      * 
      */
-    const handleFormSubmit = () => {
-        disableSubmit(method, true)
-
-        const { isChecked } = termsConditions;
-
-        if( isChecked ) {
-            dispatchTermsConditions({ type: TermsConditionsActions.hideError });
-            const { isLoaded, currentCard } = existingCustomer;
-            dispatchLoading({ type: LoadingActions.BrainTreeLoading})
-            isLoaded && currentCard
-                ? handleSavedCardSubmit()
-                : handleNewCardSubmit();
-        } else {
-            dispatchTermsConditions({ type: TermsConditionsActions.showError });
-            disableSubmit(method, false)
-        }
-    };
-
-    const handleNewCardSubmit = () => {
+    const onFormSubmit = () => {
         // @ts-ignore
-        hostedFields?.tokenize((err: any, payload: any) => {
-            if( err ) {
-                disableSubmit(method, false) 
-                dispatchLoading({ type: LoadingActions.BrainTreeIdle})
-                handleTokenError(err, dispatchFormAction)
-            } else {
-                handleTokenSuccess(
-                    payload, 
-                    billingAddress, 
-                    checkout, 
-                    setSubscriptionCreated,  
-                    handleModalError, 
-                    dispatchLoading
-                )
-            }
-        });
-    };
-
-    const handleSavedCardSubmit = () => {
-        const { currentCard } = existingCustomer
-        if(currentCard) {
-            const { token = '' } = currentCard
-            handleCreateSubscription(checkout, token, setSubscriptionCreated)
-        }
-    };
+        handleFormSubmit({
+            termsConditions,
+            existingCustomer,
+            checkout,
+            hostedFields,
+            setSubmitDisabled,
+            dispatchTermsConditions,
+            dispatchLoading,
+            dispatchFormError,
+            handleModalError,
+            setSubscriptionCreated,
+            submitOrder,
+        })
+    }
 
     const handleOrderCreation = async () => {
         try {
+            
             await submitOrder({
                 payment: {
-                    methodId: method.id,
+                    methodId: 'cod',
                     paymentData: {
                         terms: true,
                         shouldCreateAccount: true,
-                        shouldSaveInstrument: false
-                    }
-                }
-            })
-            
+                        shouldSaveInstrument: false,
+                    },
+                },
+            });
+    
             onSubmit();
-
-        } catch(error) {
-            console.error('Order submit error')
+        } catch (error) {
+            const { id } = checkout
+            cancelSubscription(id)
+            console.error('Order submit error', error);
+            handleModalError('Failed to process order. Please contact us or try again later.');
         }
-    }
+    };
     /**
      * 
      *  Misc
      * 
      */
+
+    const setSubmitDisabled = (disabled: boolean) => disableSubmit(method, disabled)
+
     const handleSignInClick = (e: any) => {
         e.preventDefault();
         navToLoginStep();
     };
 
-    const handleErrorModalClose = () => updateErrorModalState(initialErrorModalState);
+    const handleErrorModalClose = () => 
+        updateErrorModalState(initialErrorModalState);
+    
 
     const handleModalError = (message?: string, title?: string) => {
         const defaultTitle = "Something's gone wrong";
         const defaultMessage = "Please contact us or try again later."
-
+        
         message = message || defaultMessage
         title = title || defaultTitle
 
@@ -259,7 +238,7 @@ const MultiplePaymentForm = (props: any) => {
      *  Side effects
      *
      */
-    // useEffect(() => console.log('existing customer', existingCustomer), [existingCustomer])
+    useEffect(() => console.log('existing customer', existingCustomer), [existingCustomer])
     // useEffect(() => console.log(isLoading), [isLoading])
     // useEffect(() => console.log(visibilityState), [visibilityState])
     // useEffect(() => console.log('conditions', termsConditions), [termsConditions])
@@ -267,17 +246,17 @@ const MultiplePaymentForm = (props: any) => {
     useEffect(() => {
         const tryGetCustomer = async () => {
             dispatchLoading({ type: LoadingActions.EZ3Loading });
-
-            const { email } = billingAddress;
+            
+            const { customer: { id } } = checkout
 
             try {
-                const { data = null } = await getCustomer(email);
+                const { data = null } = await getCustomer(id);
 
                 if ( data ) {
                     const { savedCards } = data;
                     // @ts-ignore
                     const defaultCard = savedCards?.find(({ isDefault }) => isDefault);
-                    dispatchVisibilityAction({ type: VisibilityActions.toggleExistingCard });
+                    dispatchVisibility({ type: VisibilityActions.toggleExistingCard });
                     updateExistingCustomer(state => ({
                         ...state,
                         isLoaded: true,
@@ -287,7 +266,7 @@ const MultiplePaymentForm = (props: any) => {
                     // end braintree loading, hosted fields aren't present
                     dispatchLoading({ type: LoadingActions.BrainTreeIdle })
                 } else {
-                    dispatchVisibilityAction({ type: VisibilityActions.toggleNewCard });
+                    dispatchVisibility({ type: VisibilityActions.toggleNewCard });
                     updateExistingCustomer(state => ({
                         ...state,
                         isLoaded: true,
@@ -333,7 +312,7 @@ const MultiplePaymentForm = (props: any) => {
         disableSubmit(method, customer.isGuest);
 
         if ( ! customer.isGuest ) {
-            setSubmit(method, handleFormSubmit);
+            setSubmit(method, onSubmit);
             tryGetCustomer();
             initializeBraintree();
         }
@@ -369,7 +348,7 @@ const MultiplePaymentForm = (props: any) => {
         only when the component mounts, it will use the initial state variables.
     */
     useEffect(() => {
-        setSubmit(method, handleFormSubmit);
+        setSubmit(method, onFormSubmit);
     }, [termsConditions, existingCustomer]);
 
     return (
@@ -390,7 +369,7 @@ const MultiplePaymentForm = (props: any) => {
                     <div className="form-ccFields">
                         {
                             visibilityState.existingCards &&
-                            <SavedCardForm currentCard={ existingCustomer.currentCard } dispatchVisibility={ dispatchVisibilityAction } savedCards={ existingCustomer.customer?.savedCards } setCurrentCard={ setExistingCustomerCard } />
+                            <SavedCardForm currentCard={ existingCustomer.currentCard } dispatchVisibility={ dispatchVisibility } savedCards={ existingCustomer.customer?.savedCards } setCurrentCard={ setExistingCustomerCard } />
                         }
                         {
                             visibilityState.newCard &&
@@ -447,74 +426,6 @@ const MultiplePaymentForm = (props: any) => {
             />
         </div>
     );
-};
-
-const handleTokenSuccess = async (
-        payload: any,
-        billingAddress: any,
-        checkout: any,
-        setSubscriptionCreated: (state: boolean) => void,
-        handleModalError: (message?: string, title?: string) => void,
-        dispatchLoading: (action: Action) => void
-    ) => {
-    const { nonce } = payload;
-    const { customer } = checkout;
-
-    const { error, success, data } = await createCustomer(billingAddress, nonce, customer.id);
-    
-    success
-        ? handleCustomerSuccess(data, checkout, setSubscriptionCreated)
-        : handleCustomerError(handleModalError, error);
-};
-
-const handleCustomerSuccess = async (
-        customerData: any, 
-        checkout: any,
-        setSubscriptionCreated: (state: boolean) => void
-    ) => {
-
-    const { paymentMethods } = customerData;
-
-    const token = paymentMethods[0]?.token;
-    
-    handleCreateSubscription(checkout, token, setSubscriptionCreated)
-    
-};
-
-const handleCreateSubscription = async (
-    checkout: any, 
-    token: string,
-    setSubscriptionCreated: (state: boolean) => void
-    ) => {
-        const { cart, id } = checkout;
-        const { customerId, cartAmount } = cart;
-        const subPrice = parseFloat(cartAmount) / 3;
-        
-        const data = await createSubscription(customerId, subPrice, id, token);
-        console.log(data)
-        const { success } = data
-        if(success) {
-            return setSubscriptionCreated(true)
-        } else {
-            console.error('Failed to create sub')        
-        }
-}
-
-const handleCustomerError = (
-        handleModalError: (message?: string, title?: string) => void, response: any
-    ) => {
-
-    const {
-        verificationError,
-    } = response;
-    
-    if (verificationError) {
-        const message = "We're experiencing difficulty processing your transaction. Please contact us or try again later.";
-        return handleModalError(message);
-    }
-
-    
-    return handleModalError()
 };
 
 const mapFromCheckoutProps: MapToPropsFactory<CheckoutContextProps, any, any> = () => {

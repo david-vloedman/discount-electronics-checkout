@@ -25,3 +25,8 @@ export interface LoadingState {
     btLoading: boolean;
     ez3Loading: boolean;
 }
+
+export interface TermsConditionsState {
+    showError: boolean;
+    isChecked: boolean;
+}
