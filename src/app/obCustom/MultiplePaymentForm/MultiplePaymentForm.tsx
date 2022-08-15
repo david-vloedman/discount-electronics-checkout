@@ -21,6 +21,9 @@ import { termsConditionsReducer, TermsConditionsActions } from './reducers/terms
 import { VisibilityActions, visibilityReducer } from './reducers/visibilityReducer';
 import { loadingReducer, LoadingActions } from './reducers/loadingReducer';
 import handleFormSubmit from './utils/checkout-submit';
+import { LoadingNotification } from '../../ui/loading';
+import PaymentSchedule from './PaymentSchedule';
+
 
 enum CCSelectors {
     cardholderName = '#name-multiple',
@@ -84,6 +87,7 @@ const MultiplePaymentForm = (props: any) => {
     const [btClient, setBTClient] = useState( () => null );
     const [hostedFields, setHostedFields] = useState( () => null );
     const [subscriptionCreated, setSubscriptionCreated] = useState(() => false)
+    const [isLoadingNotif, setIsLoadingNotif] = useState(() => false)
     /**
      * 
      *  Braintree Set Up
@@ -165,12 +169,13 @@ const MultiplePaymentForm = (props: any) => {
             handleModalError,
             setSubscriptionCreated,
             submitOrder,
+            setIsLoadingNotif,
         })
     }
 
     const handleOrderCreation = async () => {
         try {
-            
+            setIsLoadingNotif(false)
             await submitOrder({
                 payment: {
                     methodId: 'cod',
@@ -181,7 +186,7 @@ const MultiplePaymentForm = (props: any) => {
                     },
                 },
             });
-    
+            
             onSubmit();
         } catch (error) {
             const { id } = checkout
@@ -233,20 +238,48 @@ const MultiplePaymentForm = (props: any) => {
 
     const toggleTermsConditionsChecked = () => dispatchTermsConditions({ type: TermsConditionsActions.toggleTermsConditionsChecked });
 
+
+    const initializeBraintree = () => {
+
+        dispatchLoading( { type: LoadingActions.BrainTreeLoading });
+        if (customer.isGuest) { return; }
+        // @ts-ignore
+        const { braintree = null } = window;
+
+        if (braintree) {
+
+            setBTInstance(braintree);
+
+            const { client: { create } } = braintree;
+
+            create(
+                {
+                    authorization: 'production_pgpm3b76_k9xtwdttfsb5n9x5',
+                },
+                handleBraintree
+            );
+        } else {
+            console.error('Braintree not found');
+            handleModalError()
+        }
+    };
+
     /**
      *
      *  Side effects
      *
      */
-    useEffect(() => console.log('existing customer', existingCustomer), [existingCustomer])
+    // useEffect(() => console.log('existing customer', existingCustomer), [existingCustomer])
     // useEffect(() => console.log(isLoading), [isLoading])
     // useEffect(() => console.log(visibilityState), [visibilityState])
     // useEffect(() => console.log('conditions', termsConditions), [termsConditions])
+
+    useEffect(() => console.log({ checkout }), [checkout])
     /*  Component Mount/Unmount */
     useEffect(() => {
         const tryGetCustomer = async () => {
             dispatchLoading({ type: LoadingActions.EZ3Loading });
-            
+
             const { customer: { id } } = checkout
 
             try {
@@ -284,37 +317,13 @@ const MultiplePaymentForm = (props: any) => {
             dispatchLoading({ type: LoadingActions.EZ3Idle });
         };
 
-        const initializeBraintree = () => {
-
-            dispatchLoading( { type: LoadingActions.BrainTreeLoading });
-            if (customer.isGuest) { return; }
-            // @ts-ignore
-            const { braintree = null } = window;
-
-            if (braintree) {
-
-                setBTInstance(braintree);
-
-                const { client: { create } } = braintree;
-
-                create(
-                    {
-                        authorization: 'sandbox_mfz33jgw_gvxp8cg7y9jydy5v',
-                    },
-                    handleBraintree
-                );
-            } else {
-                console.error('Braintree not found');
-                handleModalError()
-            }
-        };
 
         disableSubmit(method, customer.isGuest);
 
         if ( ! customer.isGuest ) {
             setSubmit(method, onSubmit);
             tryGetCustomer();
-            initializeBraintree();
+            // initializeBraintree();
         }
 
         return () => {
@@ -324,6 +333,41 @@ const MultiplePaymentForm = (props: any) => {
             hostedFields?.teardown();
         };
     }, []);
+
+    const [scriptsLoaded, setScriptsLoaded] = useState(() => ({
+        hostedFields: false,
+        client: false,
+    }))
+
+    useEffect(() => {
+        const hostedFields = 'https://js.braintreegateway.com/web/3.85.5/js/hosted-fields.min.js'
+        const client = 'https://js.braintreegateway.com/web/3.85.5/js/client.min.js'
+
+        const clientTag = document.createElement('script')
+        clientTag.src = client
+        clientTag.addEventListener('load',() => setScriptsLoaded(state => ({
+            ...state,
+            client: true
+        })))
+
+        document.body.appendChild(clientTag)
+
+        const hostedFieldsTag = document.createElement('script')
+        hostedFieldsTag.src = hostedFields
+        hostedFieldsTag.addEventListener('load',() => setScriptsLoaded(state => ({
+            ...state,
+            hostedFields: true
+        })))
+
+        document.body.appendChild(hostedFieldsTag)
+    }, [])
+
+    useEffect(() => {
+        const { hostedFields, client } = scriptsLoaded
+        if (hostedFields && client) {
+            initializeBraintree()
+        }
+    }, [scriptsLoaded])
 
     useEffect(() => {
         if (!btInstance || !btClient) { return; }
@@ -351,22 +395,41 @@ const MultiplePaymentForm = (props: any) => {
         setSubmit(method, onFormSubmit);
     }, [termsConditions, existingCustomer]);
 
+    const {subtotal} = checkout
+    
+    const belowPriceThreshold = subtotal < 600
+    
+    const showPayment = ! customer.isGuest && ! belowPriceThreshold
+    
     return (
         <div className="paymentMethod paymentMethod--creditCard">
             {
-                customer.isGuest &&
+                showPayment ||
                     <div>
-                        You must
-                        <a href="#" onClick={ handleSignInClick }> sign-in </a>
-                        to use 3 Easy Payments.
+                        {
+                            customer.isGuest &&
+                            <>
+                                    You must
+                                    <a href="#" onClick={ handleSignInClick }> sign-in or create an account</a>
+                                    to use 3 Easy Payments.
+                            </>
+                        }
+                        {
+                            belowPriceThreshold &&
+                            <p>
+                                Order total must be $600.00 or more to qualify for 3 Easy Payments
+                            </p>
+                        }
+                    
                     </div>
             }
 
             {
-                customer.isGuest ||
+                showPayment &&
                 <LoadingOverlay hideContentWhenLoading={ true } isLoading={ isLoading.btLoading || isLoading.ez3Loading }>
 
                     <div className="form-ccFields">
+                        <PaymentSchedule orderTotal={ checkout?.cart?.cartAmount } />
                         {
                             visibilityState.existingCards &&
                             <SavedCardForm currentCard={ existingCustomer.currentCard } dispatchVisibility={ dispatchVisibility } savedCards={ existingCustomer.customer?.savedCards } setCurrentCard={ setExistingCustomerCard } />
@@ -400,9 +463,7 @@ const MultiplePaymentForm = (props: any) => {
                     }
                     </div>
 
-                    { /* todo: terms and conditions */ }
-                    <div className={ classNames('form-field', { ['form-field--error']: termsConditions.showError }) } onClick={ toggleTermsConditionsChecked }>
-
+                     <div className={ classNames('form-field', { ['form-field--error']: termsConditions.showError }) } onClick={ toggleTermsConditionsChecked }>
                         <input
                             checked={ termsConditions.isChecked }
                             className="form-checkbox optimizedCheckout-form-checkbox"
@@ -411,13 +472,15 @@ const MultiplePaymentForm = (props: any) => {
                             type="checkbox"
                         />
                         <label className="form-label optimizedCheckout-form-label">
-                            Yes, I agree with the above terms and conditions
+                            Yes, I agree with the  
+                            <a href="/warranty-returns-shipping" target="_blank"> terms and conditions</a>
                         </label>
                         <FormFieldError hasError={ termsConditions.showError } message={ 'Please agree to the terms and conditions' } name={ 'termsConditions' } />
                     </div>
 
                 </LoadingOverlay>
             }
+            <LoadingNotification isLoading={ isLoadingNotif } />
             <MultiplePaymentErrorModal
                 isOpen={ errorModalState.hasError }
                 message={ errorModalState.message }

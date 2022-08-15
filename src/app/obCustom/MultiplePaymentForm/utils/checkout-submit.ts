@@ -16,6 +16,7 @@ interface HandleFormSubmitProps {
     checkout: Checkout;
     hostedFields: any;
     setSubmitDisabled(disabled?: boolean): void;
+    setIsLoadingNotif(isLoading: boolean): void;
     dispatchTermsConditions(action: Action): void;
     dispatchLoading(action: Action): void;
     dispatchFormError(action: Action): void;
@@ -37,6 +38,7 @@ const handleFormSubmit = ({
     handleModalError,
     setSubscriptionCreated,
     submitOrder,
+    setIsLoadingNotif,
     onSubmit: navToOrderConfirmation
 }: HandleFormSubmitProps) => {
 
@@ -47,7 +49,7 @@ const handleFormSubmit = ({
     if ( isChecked ) {
         dispatchTermsConditions({ type: TermsConditionsActions.hideError });
         const { isLoaded, currentCard } = existingCustomer;
-        
+        setIsLoadingNotif(true)
         isLoaded && currentCard
             ? handleSavedCardSubmit({ 
                 existingCustomer, 
@@ -150,27 +152,6 @@ const handleCustomerSuccess = async (
     }
 };
 
-// const handleOrderCreation = async (submitOrder: any, handleModalError: (message?: string, title?: string) => void) => {
-//     try {
-//         await submitOrder({
-//             payment: {
-//                 methodId: 'cod',
-//                 paymentData: {
-//                     terms: true,
-//                     shouldCreateAccount: true,
-//                     shouldSaveInstrument: false,
-//                 },
-//             },
-//         });
-
-//         return true;
-//     } catch (error) {
-//         console.error('Order submit error', error);
-//         handleModalError('Failed to process order. Please contact us or try again later.');
-//         return false;
-//     }
-// };
-
 const handleCreateSubscription = async (
     checkout: any,
     token: string,
@@ -179,11 +160,10 @@ const handleCreateSubscription = async (
     ) => {
         const { cart, id } = checkout;
         const { customerId, cartAmount } = cart;
-        const subPrice = parseFloat(cartAmount) / 3;
+        
+        const data = await createSubscription(customerId, cartAmount, id, token);
 
-        const data = await createSubscription(customerId, subPrice, id, token);
-
-        const { success } = data;
+        const { success = false } = data;
         if (success) {
             setSubscriptionCreated(true)
         } else {
@@ -201,7 +181,7 @@ const handleCustomerError = (
         verificationError,
         message
     } = response;
-    
+
     if (verificationError) {
         return handleModalError(message);
     }

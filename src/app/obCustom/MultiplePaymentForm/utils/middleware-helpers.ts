@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/tslint/config */
 
-// const FB_URL = 'https://us-central1-de-pay-after-app.cloudfunctions.net'
-const LOCAL_URL = 'http://localhost:5001/de-pay-after-app/us-central1';
+const FB_URL = 'https://us-central1-de-pay-after-app.cloudfunctions.net'
+// const FB_URL = 'http://localhost:5001/de-pay-after-app/us-central1';
 
 export const createCustomer = async (billingAddress: any, nonce: string, customerId: string) => {
 
@@ -23,7 +23,7 @@ export const createCustomer = async (billingAddress: any, nonce: string, custome
             customerId
         };
 
-        return await fetch(`${LOCAL_URL}/customer/create-customer`, {method: 'POST', body: JSON.stringify(requestData) } ).then(res => res.json());
+        return await fetch(`${FB_URL}/customer/create-customer`, {method: 'POST', body: JSON.stringify(requestData) } ).then(res => res.json());
     } catch (error) {
         console.error(error);
 
@@ -33,7 +33,7 @@ export const createCustomer = async (billingAddress: any, nonce: string, custome
 
 export const getCustomer = async (customerId: string) => {
     try {
-        return await fetch(`${LOCAL_URL}/customer/get-customer?customerId=${customerId}`).then(res => res.json());
+        return await fetch(`${FB_URL}/customer/get-customer?customerId=${customerId}`).then(res => res.json());
     } catch (error) {
         console.error(error);
 
@@ -41,16 +41,17 @@ export const getCustomer = async (customerId: string) => {
     }
 };
 
-export const createSubscription = async (customerId: string, subPrice: number, checkoutId: string, token: string) => {
+export const createSubscription = async (customerId: string, cartAmount: number, checkoutId: string, token: string) => {
+    console.log(cartAmount, 'cartAmount')
     const requestData = {
         customerId,
-        subPrice,
+        cartAmount,
         checkoutId,
         token
     }
 
     try {
-        return await fetch(`${LOCAL_URL}/customer/new-subscription`, { method: 'POST', body: JSON.stringify(requestData) }).then(res => res.json());
+        return await fetch(`${FB_URL}/customer/new-subscription`, { method: 'POST', body: JSON.stringify(requestData) }).then(res => res.json());
     } catch( error ) {
         console.error(error)
         return null
@@ -63,7 +64,7 @@ export const addOrderIdToSubscription = async (orderId: number) => {
     }
 
     try {
-        return await fetch(`${LOCAL_URL}/customer/add-order-id`, { method: 'POST', body: JSON.stringify(requestData) }).then(res => res.json());
+        return await fetch(`${FB_URL}/customer/add-order-id`, { method: 'POST', body: JSON.stringify(requestData) }).then(res => res.json());
     } catch( error ) {
         console.error(error)
         return null
@@ -76,7 +77,7 @@ export const cancelSubscription = async (checkoutId: string) => {
     }
 
     try {
-        return await fetch(`${LOCAL_URL}/customer/cancel-subscription`, { method: 'POST', body: JSON.stringify(requestData) }).then(res => res.json());
+        return await fetch(`${FB_URL}/customer/cancel-subscription`, { method: 'POST', body: JSON.stringify(requestData) }).then(res => res.json());
     } catch( error ) {
         console.error(error)
         return null
