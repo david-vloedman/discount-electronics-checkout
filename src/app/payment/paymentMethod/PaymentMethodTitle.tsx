@@ -185,6 +185,12 @@ const PaymentMethodTitle: FunctionComponent<PaymentMethodTitleProps & WithLangua
     if (method.id === 'cod') {
         titleText = '3 Easy Payments';
     }
+    const easyPaySupportedCards = [
+        'visa',
+        'mastercard',
+        'discover',
+        'american-express',
+    ];
 
     const getSelectedCardType = () => {
         if (!isSelected) {
@@ -227,6 +233,10 @@ const PaymentMethodTitle: FunctionComponent<PaymentMethodTitleProps & WithLangua
                     cardTypes={ compact(method.supportedCards.map(mapFromPaymentMethodCardType)) }
                     selectedCardType={ getSelectedCardType() }
                 />
+                {
+                    method.id === 'cod' &&
+                    <CreditCardIconList cardTypes={ easyPaySupportedCards } />
+                }
             </div>
         </Fragment>
     );

@@ -238,7 +238,6 @@ const MultiplePaymentForm = (props: any) => {
 
     const toggleTermsConditionsChecked = () => dispatchTermsConditions({ type: TermsConditionsActions.toggleTermsConditionsChecked });
 
-
     const initializeBraintree = () => {
 
         dispatchLoading( { type: LoadingActions.BrainTreeLoading });
@@ -273,8 +272,7 @@ const MultiplePaymentForm = (props: any) => {
     // useEffect(() => console.log(isLoading), [isLoading])
     // useEffect(() => console.log(visibilityState), [visibilityState])
     // useEffect(() => console.log('conditions', termsConditions), [termsConditions])
-
-    useEffect(() => console.log({ checkout }), [checkout])
+        
     /*  Component Mount/Unmount */
     useEffect(() => {
         const tryGetCustomer = async () => {
@@ -400,7 +398,7 @@ const MultiplePaymentForm = (props: any) => {
     const belowPriceThreshold = subtotal < 600
     
     const showPayment = ! customer.isGuest && ! belowPriceThreshold
-    
+
     return (
         <div className="paymentMethod paymentMethod--creditCard">
             {
@@ -429,7 +427,7 @@ const MultiplePaymentForm = (props: any) => {
                 <LoadingOverlay hideContentWhenLoading={ true } isLoading={ isLoading.btLoading || isLoading.ez3Loading }>
 
                     <div className="form-ccFields">
-                        <PaymentSchedule orderTotal={ checkout?.cart?.cartAmount } />
+                        <PaymentSchedule orderTotal={ checkout?.grandTotal } />
                         {
                             visibilityState.existingCards &&
                             <SavedCardForm currentCard={ existingCustomer.currentCard } dispatchVisibility={ dispatchVisibility } savedCards={ existingCustomer.customer?.savedCards } setCurrentCard={ setExistingCustomerCard } />
@@ -499,7 +497,7 @@ const mapFromCheckoutProps: MapToPropsFactory<CheckoutContextProps, any, any> = 
         } = props;
         
         const { checkoutState, checkoutService } = context;
-        console.log(checkoutService)
+        
         const {
             data: {
                 getCheckout,

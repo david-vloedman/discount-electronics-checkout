@@ -71,7 +71,7 @@
         left: $checklist-pip-spacing--small;
         margin: auto;
         position: absolute;
-        top: 0;
+        top: 0 !important;
 
         @include breakpoint("small") {
             left: $checklist-pip-spacing;

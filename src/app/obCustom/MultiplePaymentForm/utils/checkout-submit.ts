@@ -41,7 +41,7 @@ const handleFormSubmit = ({
     setIsLoadingNotif,
     onSubmit: navToOrderConfirmation
 }: HandleFormSubmitProps) => {
-
+    console.log('submit')
     disableSubmit(true);
 
     const { isChecked } = termsConditions;
@@ -50,6 +50,7 @@ const handleFormSubmit = ({
         dispatchTermsConditions({ type: TermsConditionsActions.hideError });
         const { isLoaded, currentCard } = existingCustomer;
         setIsLoadingNotif(true)
+        
         isLoaded && currentCard
             ? handleSavedCardSubmit({ 
                 existingCustomer, 
@@ -86,7 +87,7 @@ const handleNewCardSubmit = ({
 }: any) => {
     
     const { billingAddress } = checkout;
-    
+    console.log('tokening...')
     // @ts-ignore
     hostedFields?.tokenize((err: any, payload: any) => {
         if ( err ) {
@@ -124,9 +125,9 @@ const handleTokenSuccess = async (
     
     const { nonce } = payload;
     const { customer } = checkout;
-
+    
     const { error, success, data } = await createCustomer(billingAddress, nonce, customer.id);
-
+    console.log({error, success, data})
     success
         ? handleCustomerSuccess(data, checkout, setSubscriptionCreated, handleModalError)
         : handleCustomerError(handleModalError, error);
@@ -138,12 +139,12 @@ const handleCustomerSuccess = async (
         setSubscriptionCreated: (state: boolean) => void,
         handleModalError: (message?: string, title?: string) => void,
         ) => {
-
+        
     try {
         const { paymentMethods } = customerData;
 
         const token = paymentMethods[0]?.token;
-
+        
         handleCreateSubscription(checkout, token, setSubscriptionCreated, handleModalError);
         
     } catch (error) {
@@ -158,10 +159,11 @@ const handleCreateSubscription = async (
     setSubscriptionCreated: (state: boolean) => void,
     handleModalError: (message?: string, title?: string) => void,
     ) => {
-        const { cart, id } = checkout;
-        const { customerId, cartAmount } = cart;
+        const { cart, id, grandTotal } = checkout;
         
-        const data = await createSubscription(customerId, cartAmount, id, token);
+        const { customerId } = cart;
+        
+        const data = await createSubscription(customerId, grandTotal, id, token);
 
         const { success = false } = data;
         if (success) {
